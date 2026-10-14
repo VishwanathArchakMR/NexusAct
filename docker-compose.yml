@@ -1,0 +1,33 @@
+# ==============================================================================
+# NexusAct — Local FalkorDB Service Definition
+#
+# Primary graph database for NexusAct (Engineering Brain).
+# Note:
+#  - Port 6379 is explicitly bound to 127.0.0.1 to avoid public exposure.
+#  - Data persists across container restarts via the named volume 'nexusact_falkordb_data'.
+#  - Within container networks, use service name 'falkordb:6379'.
+#  - From host processes (FastAPI backend, scripts), use '127.0.0.1:6379'.
+# ==============================================================================
+
+services:
+  falkordb:
+    image: falkordb/falkordb:v4.4.1
+    container_name: nexusact_falkordb
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - nexusact_falkordb_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    environment:
+      - BROWSER=0
+      - REDIS_ARGS=--appendonly yes --save ""
+
+volumes:
+  nexusact_falkordb_data:
+    name: nexusact_falkordb_data
