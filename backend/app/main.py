@@ -102,7 +102,12 @@ def create_app() -> FastAPI:
             content=err_payload.model_dump(),
         )
 
-    # 4. Include API routers
+    # 4. Root probes for standard container/cloud load balancer checks
+    from backend.app.api.endpoints import health
+
+    application.include_router(health.router)
+
+    # 5. Include API v1 routers
     application.include_router(api_router)
 
     return application

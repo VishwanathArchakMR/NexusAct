@@ -23,8 +23,10 @@ logger = logging.getLogger("nexusact.ingestion.engine")
 class IngestionReport(BaseModel):
     """Detailed summary of repository graph ingestion."""
 
+    repository_id: str = "repo:local"
     repository_path: str
     repository_name: str
+    graph_name: str = "nexusact_main"
     commit_sha: str
     file_count: int
     module_count: int
@@ -33,6 +35,10 @@ class IngestionReport(BaseModel):
     contributor_count: int
     resolved_imports_count: int
     unresolved_imports_count: int
+    skipped_files_count: int = 0
+    pull_request_count: int = 0
+    parser_warnings: list[str] = []
+    data_gaps: list[str] = []
     ingested_at: str
     status: str = "COMPLETED"
 
@@ -47,12 +53,22 @@ class RepositoryIngestionEngine:
         self,
         repo_path: Optional[str] = None,
         graph_name: Optional[str] = None,
+        repo_id: Optional[str] = None,
+        github_metadata: Optional[dict] = None,
     ) -> IngestionReport:
-        target_path = Path(repo_path or settings.NEXUSACT_REPOSITORY_PATH).resolve()
+        from backend.app.graph.initialization import initialize_schema
+        from backend.app.sources.registry import repo_registry
 
+        target_path = Path(repo_path or settings.NEXUSACT_REPOSITORY_PATH).resolve()
         target_graph = graph_name or self.client.primary_graph_name
 
         logger.info("Starting ingestion of [%s] into graph [%s]", target_path, target_graph)
+
+        # 0. Initialize schema on target graph if needed
+        try:
+            initialize_schema(self.client, graph_name=target_graph)
+        except Exception as exc:
+            logger.warning("Schema initialization warning on %s: %s", target_graph, exc)
 
         # 1. Parse AST
         ast_parser = RepositoryAstParser(str(target_path))
@@ -65,6 +81,7 @@ class RepositoryIngestionEngine:
 
         repo_name = target_path.name
         now_iso = datetime.now(timezone.utc).isoformat()
+        resolved_repo_id = repo_id or f"repo:{repo_name}"
 
         # 3. Create or Merge Repository Node
         repo_query = """
@@ -72,16 +89,18 @@ class RepositoryIngestionEngine:
         SET r.name = $name,
             r.path = $path,
             r.commit_sha = $sha,
+            r.graph_name = $graph,
             r.last_ingested_at = $ingested_at
         RETURN r.id
         """
         self.client.query(
             repo_query,
             params={
-                "repo_id": f"repo:{repo_name}",
+                "repo_id": resolved_repo_id,
                 "name": repo_name,
                 "path": str(target_path),
                 "sha": commit_sha,
+                "graph": target_graph,
                 "ingested_at": now_iso,
             },
             graph_name=target_graph,
@@ -214,9 +233,40 @@ class RepositoryIngestionEngine:
                     graph_name=target_graph,
                 )
 
+        # 7. Ingest Public Pull Requests & Reviews (if available from GitHub metadata)
+        pr_count = 0
+        data_gaps: list[str] = []
+        if github_metadata and "pull_requests" in github_metadata:
+            for pr in github_metadata["pull_requests"]:
+                pr_num = pr.get("number")
+                if pr_num is not None:
+                    pr_count += 1
+                    pr_id = f"pr:{repo_name}:{pr_num}"
+                    self.client.query(
+                        """
+                        MERGE (pr:PullRequest {id: $id})
+                        SET pr.number = $num, pr.title = $title, pr.state = $state, pr.author = $author
+                        """,
+                        params={
+                            "id": pr_id,
+                            "num": pr_num,
+                            "title": pr.get("title") or "",
+                            "state": pr.get("state") or "",
+                            "author": pr.get("author") or "",
+                        },
+                        graph_name=target_graph,
+                    )
+        else:
+            data_gaps.append("PR peer review records unavailable in local Git history")
+
+        if ast_parser.skipped_files:
+            data_gaps.append(f"{len(ast_parser.skipped_files)} file(s) skipped due to syntax or encoding errors")
+
         report = IngestionReport(
+            repository_id=resolved_repo_id,
             repository_path=str(target_path),
             repository_name=repo_name,
+            graph_name=target_graph,
             commit_sha=commit_sha,
             file_count=len(ast_parser.file_map),
             module_count=len(ast_parser.module_map),
@@ -225,8 +275,27 @@ class RepositoryIngestionEngine:
             contributor_count=len(contributors_set),
             resolved_imports_count=resolved_count,
             unresolved_imports_count=unresolved_count,
+            skipped_files_count=len(ast_parser.skipped_files),
+            pull_request_count=pr_count,
+            parser_warnings=ast_parser.parser_warnings[:20],
+            data_gaps=data_gaps,
             ingested_at=now_iso,
         )
+
+        # 8. Synchronize repository registry record
+        repo_rec = repo_registry.get_repository(resolved_repo_id) or repo_registry.get_repository(target_graph)
+        if repo_rec:
+            repo_rec.commit_sha = commit_sha
+            repo_rec.file_count = report.file_count
+            repo_rec.module_count = report.module_count
+            repo_rec.edge_count = report.import_edge_count
+            repo_rec.commit_count = report.commit_count
+            repo_rec.contributor_count = report.contributor_count
+            repo_rec.last_ingested_at = now_iso
+            repo_rec.status = "INGESTED"
+            repo_rec.known_gaps = data_gaps
+            repo_rec.parser_warnings = ast_parser.parser_warnings[:20]
+            repo_registry.update_repository(repo_rec)
 
         logger.info("Ingestion completed: %s", report.model_dump())
         return report

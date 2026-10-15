@@ -12,7 +12,7 @@ Validates graph traversal paths against FalkorDB to ensure:
 
 import logging
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
@@ -261,6 +261,212 @@ class PathVerifier:
             validated_node_ids=sorted(list(validated_nodes)),
             validated_edge_ids=sorted(list(validated_edges)),
             is_truncated=impact_output.is_truncated,
+        )
+
+    def verify_investigation(
+        self,
+        target_module_id: str,
+        impact_output: Optional[TraceImpactOutput] = None,
+        reviewer_output: Optional[Any] = None,
+        simulation_output: Optional[Any] = None,
+        steps: Optional[Sequence[Any]] = None,
+        graph_name: Optional[str] = None,
+        expected_repo_id: Optional[str] = None,
+    ) -> PathVerificationResult:
+        """
+        Calculates aggregate verification status across all investigation evidence.
+
+        Status calculation rules:
+        - CONTRADICTED: Any graph contradiction, nonexistent node/edge, or target mismatch.
+        - UNKNOWN: Database connection failure or graph unreachable.
+        - SUPPORTED: Valid topology but downgraded due to:
+          * missing source_file provenance records on edges
+          * query truncation (impact or simulation path limits reached)
+          * reviewer query failure or missing contributor history
+          * failed or rejected tool execution steps
+        - VERIFIED: All topology paths verified, all edges have source provenance,
+          no truncation, no step failures, and all evidence queries succeeded.
+        """
+        target_graph = graph_name or self.client.primary_graph_name
+
+        if impact_output:
+            res = self.verify_impact_output(impact_output, graph_name=target_graph, expected_repo_id=expected_repo_id)
+            checks = list(res.checks)
+            limitations = list(res.limitations)
+            status = res.status
+            is_trunc = res.is_truncated
+            checked_count = res.checked_paths_count
+            valid_count = res.valid_paths_count
+            invalid_count = res.invalid_paths_count
+            val_nodes = list(res.validated_node_ids)
+            val_edges = list(res.validated_edge_ids)
+        else:
+            checks = []
+            limitations = []
+            is_trunc = False
+            checked_count = 0
+            valid_count = 0
+            invalid_count = 0
+            val_nodes = []
+            val_edges = []
+            try:
+                if target_module_id in ("repo_wide", "", None):
+                    mod_count_res = self.client.query(
+                        f"MATCH (m:{LABEL_MODULE}) RETURN count(m) LIMIT 1",
+                        graph_name=target_graph,
+                    )
+                    mod_count = mod_count_res[0][0] if mod_count_res else 0
+                    checks.append(
+                        VerificationCheck(
+                            name="repository_graph_existence",
+                            passed=True,
+                            details=f"Target graph '{target_graph}' verified with {mod_count} module(s).",
+                        )
+                    )
+                    status = VerificationStatus.VERIFIED
+                else:
+                    target_node = self.client.query(
+                        f"MATCH (m:{LABEL_MODULE} {{id: $id}}) RETURN m.id LIMIT 1",
+                        params={"id": target_module_id},
+                        graph_name=target_graph,
+                    )
+                    if not target_node:
+                        return PathVerificationResult(
+                            status=VerificationStatus.CONTRADICTED,
+                            target_module_id=target_module_id,
+                            checked_paths_count=0,
+                            valid_paths_count=0,
+                            invalid_paths_count=0,
+                            checks=[
+                                VerificationCheck(
+                                    name="target_existence",
+                                    passed=False,
+                                    details=f"Target module '{target_module_id}' not found in '{target_graph}'.",
+                                )
+                            ],
+                            limitations=[f"Target '{target_module_id}' not found in active graph."],
+                        )
+                    checks.append(
+                        VerificationCheck(
+                            name="target_existence",
+                            passed=True,
+                            details=f"Target module '{target_module_id}' exists in '{target_graph}'.",
+                        )
+                    )
+                    val_nodes.append(target_module_id)
+                    status = VerificationStatus.VERIFIED
+            except Exception as e:
+                return PathVerificationResult(
+                    status=VerificationStatus.UNKNOWN,
+                    target_module_id=target_module_id,
+                    checked_paths_count=0,
+                    valid_paths_count=0,
+                    invalid_paths_count=0,
+                    checks=[VerificationCheck(name="graph_connection", passed=False, details=str(e))],
+                    limitations=["Database connection failure prevented verification."],
+                )
+
+        # Reviewer evidence checks
+        if reviewer_output is not None:
+            rev_ev = getattr(reviewer_output, "evidence_status", None)
+            if rev_ev == "QUERY_FAILURE":
+                checks.append(
+                    VerificationCheck(
+                        name="reviewer_evidence",
+                        passed=False,
+                        details="Reviewer query failed in graph.",
+                    )
+                )
+                limitations.append("Reviewer discovery failed due to graph query error.")
+                if status == VerificationStatus.VERIFIED:
+                    status = VerificationStatus.SUPPORTED
+            elif rev_ev == "NO_MATCHING_CONTRIBUTORS":
+                checks.append(
+                    VerificationCheck(
+                        name="reviewer_evidence",
+                        passed=False,
+                        details="No matching contributors found for module.",
+                    )
+                )
+                limitations.append("No contributor commit history found for target module.")
+                if status == VerificationStatus.VERIFIED:
+                    status = VerificationStatus.SUPPORTED
+            elif rev_ev == "NO_REVIEW_DATA":
+                checks.append(
+                    VerificationCheck(
+                        name="reviewer_evidence",
+                        passed=True,
+                        details="Commit activity available, peer review edges absent.",
+                    )
+                )
+                limitations.append("No formal peer review records recorded in repository history.")
+            else:
+                checks.append(
+                    VerificationCheck(
+                        name="reviewer_evidence",
+                        passed=True,
+                        details="Reviewer evidence verified with peer review records.",
+                    )
+                )
+
+        # Simulation checks
+        if simulation_output is not None:
+            is_incomplete = getattr(simulation_output, "is_incomplete", False)
+            if is_incomplete:
+                checks.append(
+                    VerificationCheck(
+                        name="simulation_completeness",
+                        passed=False,
+                        details="Simulation path queries reached maximum limit.",
+                    )
+                )
+                limitations.append("Simulation results were truncated at upper limit.")
+                is_trunc = True
+                if status == VerificationStatus.VERIFIED:
+                    status = VerificationStatus.SUPPORTED
+            else:
+                checks.append(
+                    VerificationCheck(
+                        name="simulation_completeness",
+                        passed=True,
+                        details="Counterfactual scenario graph comparison completed cleanly.",
+                    )
+                )
+
+        # Tool step execution checks
+        if steps:
+            failed_steps = [s for s in steps if getattr(s, "status", None) in ("FAILED", "REJECTED")]
+            if failed_steps:
+                checks.append(
+                    VerificationCheck(
+                        name="step_execution",
+                        passed=False,
+                        details=f"{len(failed_steps)} step(s) failed during investigation.",
+                    )
+                )
+                limitations.append(f"Investigation had {len(failed_steps)} failed tool step(s).")
+                if status == VerificationStatus.VERIFIED:
+                    status = VerificationStatus.SUPPORTED
+            else:
+                checks.append(
+                    VerificationCheck(
+                        name="step_execution",
+                        passed=True,
+                        details="All agent tool steps completed successfully.",
+                    )
+                )
+
+        return PathVerificationResult(
+            status=status,
+            target_module_id=target_module_id,
+            checked_paths_count=checked_count,
+            valid_paths_count=valid_count,
+            invalid_paths_count=invalid_count,
+            checks=checks,
+            limitations=limitations,
+            validated_node_ids=val_nodes,
+            validated_edge_ids=val_edges,
+            is_truncated=is_trunc,
         )
 
 

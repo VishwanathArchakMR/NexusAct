@@ -137,6 +137,100 @@ def create_mcp_server() -> MCPServer:
         output = execute_simulate_remove_module(payload)
         return output.model_dump_json()
 
+    @server.tool(
+        name="nexusact_resolve_entity",
+        description=(
+            "Resolves natural-language references or keywords to matching graph module entities, "
+            "flagging ambiguous queries when multiple candidates match."
+        ),
+    )
+    def nexusact_resolve_entity(
+        query: str,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Natural-language entity resolution tool."""
+        from backend.app.graph.tools.resolve import ResolveEntityInput, execute_resolve_entity
+
+        payload = ResolveEntityInput(query=query, graph_name=graph_name)
+        output = execute_resolve_entity(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_graph_neighborhood",
+        description=(
+            "Inspects 1-hop incoming dependent modules and outgoing dependencies with source provenance records."
+        ),
+    )
+    def nexusact_graph_neighborhood(
+        module_identifier: str,
+        limit: int = 30,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Immediate graph neighborhood inspection tool."""
+        from backend.app.graph.tools.neighborhood import GraphNeighborhoodInput, execute_graph_neighborhood
+
+        payload = GraphNeighborhoodInput(
+            module_identifier=module_identifier,
+            limit=limit,
+            graph_name=graph_name,
+        )
+        output = execute_graph_neighborhood(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_shortest_path",
+        description=("Finds the shortest directed dependency path between two modules in the dependency graph."),
+    )
+    def nexusact_shortest_path(
+        source_identifier: str,
+        target_identifier: str,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Shortest path finder between two graph modules."""
+        from backend.app.graph.tools.shortest_path import ShortestPathInput, execute_shortest_path
+
+        payload = ShortestPathInput(
+            source_identifier=source_identifier,
+            target_identifier=target_identifier,
+            graph_name=graph_name,
+        )
+        output = execute_shortest_path(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_source_metadata",
+        description=("Inspects active repository sources, collection status, data freshness, and known evidence gaps."),
+    )
+    def nexusact_source_metadata(
+        repo_id: Optional[str] = None,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Source discovery and evidence gaps inspection tool."""
+        from backend.app.sources.models import SourceMetadataOutput
+        from backend.app.sources.registry import repo_registry
+
+        target_graph = graph_name or "nexusact_main"
+        rec = repo_registry.get_repository(repo_id or target_graph)
+        if rec:
+            out = SourceMetadataOutput(
+                repository_id=rec.id,
+                repository_name=rec.name,
+                graph_name=rec.graph_name,
+                commit_sha=rec.commit_sha,
+                sources=rec.capabilities,
+                known_gaps=rec.known_gaps,
+            )
+        else:
+            out = SourceMetadataOutput(
+                repository_id="repo:unknown",
+                repository_name=target_graph,
+                graph_name=target_graph,
+                commit_sha="HEAD",
+                sources=[],
+                known_gaps=["Repository not found in registry"],
+            )
+        return out.model_dump_json()
+
     return server
 
 

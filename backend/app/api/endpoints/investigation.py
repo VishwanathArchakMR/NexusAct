@@ -32,6 +32,7 @@ from backend.app.graph.tools.simulation import (
     SimulationResult,
     execute_simulate_remove_module,
 )
+from backend.app.sources.registry import repo_registry
 
 logger = logging.getLogger("nexusact.api.investigation")
 router = APIRouter(tags=["Investigation & Graph Tools"])
@@ -39,7 +40,11 @@ router = APIRouter(tags=["Investigation & Graph Tools"])
 
 class InvestigationRequest(BaseModel):
     question: str = Field(..., description="Investigation prompt or user engineering question")
-    module_identifier: str = Field(..., description="Target module ID or module name")
+    module_identifier: Optional[str] = Field(
+        default=None,
+        description="Optional target module ID or name (auto-resolved from natural language question if omitted)",
+    )
+    repo_id: Optional[str] = Field(default=None, description="Selected repository identifier")
     graph_name: Optional[str] = Field(default=None, description="Target graph name")
     max_budget: int = Field(default=5, ge=1, le=8, description="Maximum tool invocation budget")
 
@@ -75,6 +80,7 @@ async def run_investigation(payload: InvestigationRequest) -> InvestigationRepor
         report = await agent.investigate(
             question=payload.question,
             module_identifier=payload.module_identifier,
+            repo_id=payload.repo_id,
             graph_name=payload.graph_name,
         )
         return report
@@ -136,10 +142,17 @@ def get_graph_subgraph(
     center_module_id: Optional[str] = Query(default=None, description="Optional center module ID to bound subgraph"),
     depth: int = Query(default=2, ge=1, le=4),
     limit: int = Query(default=100, ge=1, le=300),
+    repo_id: Optional[str] = Query(default=None, description="Repository identifier"),
     graph_name: Optional[str] = None,
 ) -> SubgraphResponse:
     """Returns nodes and edges for visualization canvas rendering."""
-    target_graph = graph_name or graph_client.primary_graph_name
+    target_graph = graph_name
+    if not target_graph and repo_id:
+        repo_rec = repo_registry.get_repository(repo_id)
+        if repo_rec:
+            target_graph = repo_rec.graph_name
+    if not target_graph:
+        target_graph = graph_client.primary_graph_name
 
     try:
         if center_module_id:

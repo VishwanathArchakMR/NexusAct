@@ -96,8 +96,12 @@ def execute_who_knows(
     """
     raw_authors = cli.query(author_query, params={"mod_ids": target_set}, graph_name=target_graph)
 
-    # 3. Check for explicit REVIEWS relationships (if present)
+    # 3. Check for explicit REVIEWS relationships (if present).
+    # REVIEWS edges are optional: they exist only when the ingestion pipeline
+    # records formal review assignments. Missing REVIEWS edges mean NO_REVIEW_DATA,
+    # not that a person is a bad reviewer.
     reviewers_map: Dict[str, int] = {}
+    reviews_query_ok = True
     try:
         rev_res = cli.query(
             """
@@ -110,8 +114,9 @@ def execute_who_knows(
         )
         for r_row in rev_res:
             reviewers_map[r_row[0]] = r_row[1]
-    except Exception:
-        pass
+    except Exception as _rev_err:
+        logger.warning("REVIEWS query failed (treating as absent): %s", _rev_err)
+        reviews_query_ok = False
 
     now = datetime.now(timezone.utc)
     candidates: List[ReviewerCandidate] = []
@@ -186,9 +191,19 @@ def execute_who_knows(
     for idx, c in enumerate(top_candidates):
         c.rank = idx + 1
 
+    # Determine honest evidence status
+    if not raw_authors:
+        ev_status = "NO_MATCHING_CONTRIBUTORS"
+    elif not reviews_query_ok:
+        ev_status = "QUERY_FAILURE"
+    elif not reviewers_map:
+        ev_status = "NO_REVIEW_DATA"
+    else:
+        ev_status = "VERIFIED"
+
     return WhoKnowsOutput(
         target_module_id=resolved_id,
         investigated_modules=target_set,
         candidates=top_candidates,
-        evidence_status="VERIFIED" if top_candidates else "NO_MATCHING_CONTRIBUTORS",
+        evidence_status=ev_status,
     )

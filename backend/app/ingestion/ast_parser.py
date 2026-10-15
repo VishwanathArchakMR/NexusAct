@@ -74,6 +74,8 @@ class RepositoryAstParser:
         self.file_map: Dict[str, FileInfo] = {}
         self.module_map: Dict[str, ModuleInfo] = {}
         self.known_modules: Set[str] = set()
+        self.skipped_files: List[Dict[str, str]] = []
+        self.parser_warnings: List[str] = []
 
     def discover_files(self) -> List[Path]:
         """Discovers all eligible Python source files in the repository."""
@@ -135,8 +137,9 @@ class RepositoryAstParser:
                 tree = ast.parse(content, filename=str(abs_path))
                 imports = self._extract_imports(tree, rel_path, file_info.module_name)
                 file_info.imports = imports
-            except Exception:
-                # Log parse error but do not abort entire repository ingestion
+            except Exception as exc:
+                self.skipped_files.append({"file": rel_path, "error": str(exc)})
+                self.parser_warnings.append(f"Failed to parse '{rel_path}': {str(exc)}")
                 continue
 
         # Step 3: Aggregate file-level imports into Module-level dependencies

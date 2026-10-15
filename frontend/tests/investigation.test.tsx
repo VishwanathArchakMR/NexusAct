@@ -68,18 +68,24 @@ describe("Phase 2 Investigation UI Components", () => {
       scenario_id: "scen_test",
       target_module_id: "mod:backend.app.graph.client",
       target_module_name: "backend.app.graph.client",
+      baseline_paths_count: 12,
+      baseline_node_count: 35,
       disappeared_paths_count: 12,
       disappeared_paths: [
         {
           dependent_module_id: "mod:caller",
           dependent_module_name: "caller",
           broken_path: ["caller", "backend.app.graph.client"],
+          hops: 1,
         },
       ],
-      disconnected_modules: ["caller"],
+      surviving_paths_count: 0,
+      surviving_paths: [],
+      newly_isolated_modules: ["caller"],
       surviving_modules_count: 34,
       surviving_edges_count: 67,
       blast_radius_score: 0.15,
+      is_incomplete: false,
       disclaimer: "Simulation prediction is derived from static dependency topology.",
     };
 
@@ -91,9 +97,9 @@ describe("Phase 2 Investigation UI Components", () => {
       />
     );
 
-    expect(screen.getByText(/Disrupted Paths/i)).toBeDefined();
-    expect(screen.getByText("12")).toBeDefined();
-    expect(screen.getByText("15.0%")).toBeDefined();
+    expect(screen.getAllByText(/Broken Paths/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("12").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/15\.0%/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Simulation prediction is derived from static dependency topology/i)).toBeDefined();
   });
 
