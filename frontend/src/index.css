@@ -1,33 +1,48 @@
 :root {
-  --bg-primary: #0a0d14;
-  --bg-secondary: #101522;
-  --bg-card: #151b2c;
-  --bg-card-hover: #1c2438;
-  --border-subtle: #242d42;
-  --border-focus: #3b82f6;
-  
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
+  /* Restrained, modern engineering palette */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-muted: #f1f5f9;
+
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-focus: #2563eb;
+
+  /* Deep navy typography */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
   --text-muted: #64748b;
 
-  --accent-blue: #3b82f6;
-  --accent-cyan: #06b6d4;
-  --accent-purple: #8b5cf6;
-  
-  --status-success-bg: rgba(16, 185, 129, 0.12);
-  --status-success-text: #34d399;
-  --status-success-border: rgba(16, 185, 129, 0.3);
-  
-  --status-warning-bg: rgba(245, 158, 11, 0.12);
-  --status-warning-text: #fbbf24;
-  --status-warning-border: rgba(245, 158, 11, 0.3);
+  /* Electric-blue primary accents */
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-blue-subtle: #eff6ff;
+  --accent-cyan: #0284c7;
 
-  --status-error-bg: rgba(239, 68, 68, 0.12);
-  --status-error-text: #f87171;
-  --status-error-border: rgba(239, 68, 68, 0.3);
+  /* Evidence & Verification State Colors */
+  --status-verified-bg: #ecfdf5;
+  --status-verified-text: #059669;
+  --status-verified-border: #a7f3d0;
+
+  --status-supported-bg: #f0f9ff;
+  --status-supported-text: #0284c7;
+  --status-supported-border: #bae6fd;
+
+  --status-contradicted-bg: #fff1f2;
+  --status-contradicted-text: #e11d48;
+  --status-contradicted-border: #fecdd3;
+
+  --status-unknown-bg: #fffbeb;
+  --status-unknown-text: #d97706;
+  --status-unknown-border: #fde68a;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 }
 
 * {
@@ -51,7 +66,7 @@ code, pre {
 }
 
 a {
-  color: var(--accent-cyan);
+  color: var(--accent-blue);
   text-decoration: none;
   transition: color 0.15s ease;
 }

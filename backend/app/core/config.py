@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "NexusAct"
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "0.2.0"
+    NEXUSACT_REPOSITORY_PATH: str = "."
 
     # API Server
     BACKEND_HOST: str = "127.0.0.1"

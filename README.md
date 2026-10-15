@@ -1,4 +1,7 @@
-# NexusAct (GraphAction Fabric)
+# NexusAct
+
+**Graph-Native AI That Investigates, Simulates, and Acts**  
+*Architecture: GraphAction Fabric (GAF)*
 
 [![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.4.1-blue)](https://www.falkordb.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
@@ -7,119 +10,102 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Application:** Engineering Brain  
-> **Hackathon Track:** Agents That Act on Connected Data  
-> **Status:** Phase 1 Foundation Verified & Operational
+---
+
+## 1. Executive Summary
+
+**NexusAct** is a graph-native AI engineering agent that investigates software repositories as connected graphs.
+
+A user asks:
+> *"If I change this module, which other modules may be affected, who has relevant experience, what happens if the module is removed in a simulated graph, and can you create an issue explaining the findings?"*
+
+NexusAct executes this complete, end-to-end investigation:
+1. **Repository Ingestion:** Ingests an actual local Git repository into FalkorDB via Python AST parsing and Git commit history.
+2. **Reverse Impact Analysis (`trace_impact`):** Traverses upstream reverse-dependencies up to 4 hops (`DependentModule -[:DEPENDS_ON]-> DependencyModule`).
+3. **Reviewer Discovery (`who_knows`):** Computes evidence-backed reviewer rankings with a transparent 4-part scoring formula (files touched, recency, ownership, and peer reviews).
+4. **Structural Centrality (`page_rank`):** Identifies structurally influential components using FalkorDB native PageRank (`CALL algo.pageRank('Module', 'DEPENDS_ON')`).
+5. **Counterfactual Simulation (`simulate_remove_module`):** Clones the graph via `GRAPH.COPY`, removes the target module in the temporary copy, computes broken paths and blast radius score, logs the scenario, and cleans up the temporary clone.
+6. **Path Verification (`PathVerifier`):** Validates all paths, node/edge IDs, directions, and source file evidence against FalkorDB, emitting `VERIFIED`, `SUPPORTED`, `CONTRADICTED`, or `UNKNOWN`.
+7. **Adaptive MCP Agent:** The agent discovers registered tools over MCP and adaptively selects tools based on intermediate findings, persisting `Investigation` and `ToolInvocation` records in FalkorDB.
+8. **Interactive Frontend:** Renders real dependency graphs, agent tool execution traces, reviewer evidence, counterfactual before/after diffs, and issue proposals.
+9. **Verified GitHub Action:** Generates issue proposals with canonical SHA-256 payload hash binding and idempotency markers (`<!-- GAF-ACTION-MARKER:<hash> -->`), submits to GitHub when approved, and verifies via independent read-back.
 
 ---
 
-## 1. What is NexusAct?
+## 2. Technical Architecture: GraphAction Fabric (GAF)
 
-**NexusAct** (GraphAction Fabric / GAF) is a graph-native AI engineering agent that understands repository relationships, simulates the blast radius of code changes in isolated graph branches, discovers domain-expert reviewers, verifies graph evidence paths, and acts safely on connected data.
-
-Rather than treating the database as a decorative visualization tool, NexusAct uses **FalkorDB** as its computational core:
-- **Graph-Powered Lineage:** Stores module dependency graphs, file structures, and contributor ownership.
-- **Counterfactual Branching:** Uses FalkorDB's native `GRAPH.COPY` to clone the graph into an isolated scenario sandbox, test hypothetical deletions, and diff the blast radius before and after the modification.
-- **Agent Action Engine:** Exposes typed, domain-specific tools via the Model Context Protocol (MCP).
-
----
-
-## 2. What Works in Phase 1 vs. What is Planned for Phase 2
-
-### Validated in Phase 1 (Foundation & Local Initialization)
-- **Local FalkorDB v4.4.1** running via Docker with persistent volume storage (`nexusact_falkordb_data`).
-- **Idempotent graph client & versioned schema initialization** (`Module`, `File`, `Person`, `Commit`).
-- **Runtime-tested `GRAPH.COPY`** graph cloning and isolated scenario deletion.
-- **Verified graph algorithms:** Native PageRank (`CALL algo.pageRank('Module', 'DEPENDS_ON')`) and Cypher `shortestPath(...)`.
-- **FastAPI backend** with process liveness (`/api/v1/health`), honest readiness (`/api/v1/ready`), correlation IDs, structured logging, and strict CORS.
-- **Restricted MCP server** (`mcp` v2.3.0) with typed contracts and read-only diagnostic tool (`nexusact_diagnose_graph`).
-- **React 19 + TypeScript frontend** displaying live backend and FalkorDB connectivity.
-- **Automated quality suite:** ruff lint/format, mypy type checks, 16 pytest tests, oxlint, vitest, and production build.
-
-### Planned for Phase 2 (Real Graph Intelligence)
-- Git AST parsing and full repository dependency ingestion.
-- Multi-hop reverse-dependency impact algorithm (`trace_impact`).
-- Contributor knowledge & reviewer discovery ranking (`who_knows`).
-- Full counterfactual graph deletion & before/after diffing.
-- Interactive graph explorer UI with scenario comparison.
-- Autonomous GitHub issue generation from validated evidence.
-
----
-
-## 3. Technology Stack & Versions Used
-
-- **Operating System:** Windows 11 (with WSL2 container runtime)
-- **Graph Database:** FalkorDB `v4.4.1` (pinned Docker image `falkordb/falkordb:v4.4.1`)
-- **Python:** Python `3.12.8` managed with `uv` (`0.8.3`)
-- **Backend Framework:** FastAPI `0.143.1`, Pydantic `2.14.1`, Uvicorn `0.54.0`
-- **MCP Framework:** Python `mcp` SDK `2.3.0` (`MCPServer`)
-- **Frontend:** React `19.2.8`, TypeScript `6.0.2`, Vite `8.3.4`, Lucide React `1.57.0`
-- **Testing & Quality:** Pytest `9.1.1`, Ruff `0.17.0`, Mypy `2.4.0`, Oxlint `1.81.0`, Vitest `5.0.4`
-
----
-
-## 4. Quick Start (Local Setup)
-
-### Step 1: Clone and Initialize Configuration
-```powershell
-# Copy the verified environment configuration
-Copy-Item .env.example .env
+```mermaid
+graph TD
+    User["User / Engineering Lead"] -->|Question & Target| Workspace["NexusAct Workspace (React 19 + TypeScript)"]
+    Workspace -->|HTTP REST| API["FastAPI Backend (v0.2.0)"]
+    API -->|Investigate / Tools| Agent["Adaptive Agent Loop (Planner)"]
+    Agent -->|List / Call Tools| MCP["Model Context Protocol Server (mcp v2.3.0)"]
+    
+    MCP -->|trace_impact| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    MCP -->|who_knows| FalkorDB
+    MCP -->|page_rank| FalkorDB
+    MCP -->|simulate_remove_module| FalkorDB
+    
+    FalkorDB -->|Nodes & Edges| Verifier["PathVerifier (7-point check)"]
+    Verifier -->|VERIFIED / SUPPORTED| Action["GitHub Action Service"]
+    Action -->|Hash Approval & Readback| GitHub[("GitHub API (Sandboxed)")]
 ```
 
-### Step 2: Run Automated Setup
-```powershell
-# Windows
-.\scripts\setup.ps1
+### Graph Model & Canonical Semantics
+- **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
+- **Node Labels:** `Repository`, `Module`, `File`, `Person`, `Commit`, `Investigation`, `ToolInvocation`, `Scenario`, `ScenarioResult`, `Action`, `ActionOutcome`.
+- **Relationship Types:** `DEPENDS_ON`, `CONTAINS`, `AUTHORED`, `TOUCHES`, `USED_TOOL`, `HAS_SCENARIO`, `CREATED_ACTION`, `HAS_OUTCOME`.
+- **Evidence Provenance:** Edges store `evidence_type` (`observed`, `derived`, `inferred`), `source_file`, and commit references.
 
-# Linux / macOS
-chmod +x ./scripts/*.sh
-./scripts/setup.sh
-```
+---
 
-### Step 3: Start Services
+## 3. Technology Stack & Environment
+
+| Component | Technology | Version |
+|---|---|---|
+| **Operating System** | Windows 11 with WSL2 runtime | - |
+| **Graph Database** | FalkorDB (Docker Container) | `v4.4.1` (Pinned) |
+| **Python** | CPython managed via `uv` | `3.12.8` |
+| **Backend** | FastAPI, Pydantic v2, Uvicorn | `0.115+` / `2.14+` |
+| **MCP SDK** | Official Python `mcp` SDK | `2.3.0` |
+| **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
+| **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
+| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | All clean (33/33 python, 8/8 vitest) |
+
+---
+
+## 4. Quick Start & Local Run Commands
+
+### 1. Start Services
 ```powershell
-# Windows
+# Starts FalkorDB, launches FastAPI backend (8000), and starts frontend (5173)
 .\scripts\start.ps1
-
-# Linux / macOS
-./scripts/start.sh
 ```
 
-### Step 4: Verify Services
-- **Frontend Dashboard:** [http://localhost:5173](http://localhost:5173)
-- **FastAPI Interactive Docs:** [http://127.0.0.1:8000/api/docs](http://127.0.0.1:8000/api/docs)
-- **FastAPI Liveness Probe:** [http://127.0.0.1:8000/api/v1/health](http://127.0.0.1:8000/api/v1/health)
-- **FastAPI Readiness Probe:** [http://127.0.0.1:8000/api/v1/ready](http://127.0.0.1:8000/api/v1/ready)
-
----
-
-## 5. Testing and Validation
-
-Run the complete, single-command quality pipeline:
+### 2. Ingest Repository into FalkorDB
 ```powershell
-# Windows
-.\scripts\check.ps1
-
-# Linux / macOS
-./scripts/check.sh
+# Runs AST parser and Git history extractor on the local workspace
+.\scripts\ingest.ps1
 ```
 
-This automatically runs:
-1. Python formatting & linting (`ruff`)
-2. Python type checking (`mypy`)
-3. Database capability & API test suite (`pytest`)
-4. Frontend linting (`oxlint`)
-5. Frontend component tests (`vitest`)
-6. Frontend production build (`tsc -b && vite build`)
+### 3. Run Quality & Validation Suite
+```powershell
+# Runs ruff, mypy, pytest (33 tests), oxlint, vitest (8 tests), and production build
+.\scripts\check.ps1
+```
+
+### 4. Stop Local Services
+```powershell
+.\scripts\stop.ps1
+```
 
 ---
 
-## 6. Architecture & Documentation Directory
+## 5. Security & Isolation Guarantees
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — System boundaries, components, and data flows.
-- [docs/GRAPH_MODEL.md](docs/GRAPH_MODEL.md) — Graph schema conventions, stable IDs, and relationship directions.
-- [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) — Step-by-step local workstation installation and execution.
-- [docs/MCP_DESIGN.md](docs/MCP_DESIGN.md) — Tool registry, typed contracts, and stdio transport.
-- [docs/SECURITY.md](docs/SECURITY.md) — Local security defaults, graph shields, and action boundaries.
-- [docs/TESTING.md](docs/TESTING.md) — Capability test matrix, verified syntax, and limitations.
-- [docs/DEPLOYMENT_PORTABILITY.md](docs/DEPLOYMENT_PORTABILITY.md) — Future cloud hosting considerations.
+1. **Docker Daemon Security:** The Docker daemon running inside WSL2 is explicitly hardened to loopback-only binding (`127.0.0.1:2375`). It is never exposed on `0.0.0.0`.
+2. **Database Protection:** The primary graph (`nexusact_main`) is protected in code (`PROTECTED_GRAPHS`). Counterfactual simulations clone via `GRAPH.COPY` and strictly delete temporary clones in `finally` blocks, preserving the source graph under all failure scenarios.
+3. **No Dynamic Cypher Injection:** All Cypher queries use parameterized inputs with typed Pydantic payloads.
+4. **Action Approval Binding:** Issue proposals compute a canonical SHA-256 hash. External submission requires the exact approved hash; any payload tampering is rejected.
+5. **Idempotency Reconciliation:** Every proposed issue embeds a `<!-- GAF-ACTION-MARKER:<hash> -->` marker. Timeouts trigger a duplicate search before considering retries, avoiding duplicate issues.
+6. **Honest Fallback:** If Ollama or GitHub tokens are unconfigured, NexusAct operates honestly with full local graph intelligence and previews without fabricating fake reviews or external states.

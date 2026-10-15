@@ -46,6 +46,97 @@ def create_mcp_server() -> MCPServer:
         output = run_graph_diagnostics(payload)
         return output.model_dump_json()
 
+    @server.tool(
+        name="nexusact_trace_impact",
+        description=(
+            "Finds dependent modules that may be affected by changes to a target module "
+            "via bounded reverse traversal (up to 4 hops)."
+        ),
+    )
+    def nexusact_trace_impact(
+        module_identifier: str,
+        max_depth: int = 4,
+        limit: int = 50,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Bounded reverse dependency traversal tool."""
+        from backend.app.graph.tools.impact import TraceImpactInput, execute_trace_impact
+
+        payload = TraceImpactInput(
+            module_identifier=module_identifier,
+            max_depth=max_depth,
+            limit=limit,
+            graph_name=graph_name,
+        )
+        output = execute_trace_impact(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_who_knows",
+        description=(
+            "Identifies developers with relevant recorded experience and transparent scoring "
+            "for a target module and its affected components."
+        ),
+    )
+    def nexusact_who_knows(
+        module_identifier: str,
+        affected_modules: Optional[list[str]] = None,
+        limit: int = 5,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Evidence-based reviewer and code owner discovery."""
+        from backend.app.graph.tools.reviewers import WhoKnowsInput, execute_who_knows
+
+        payload = WhoKnowsInput(
+            module_identifier=module_identifier,
+            affected_modules=affected_modules or [],
+            limit=limit,
+            graph_name=graph_name,
+        )
+        output = execute_who_knows(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_page_rank",
+        description=(
+            "Calculates structural centrality across the module dependency graph using FalkorDB native PageRank."
+        ),
+    )
+    def nexusact_page_rank(
+        limit: int = 10,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Structural centrality analysis using PageRank algorithm."""
+        from backend.app.graph.tools.centrality import PageRankInput, execute_page_rank
+
+        payload = PageRankInput(
+            limit=limit,
+            graph_name=graph_name,
+        )
+        output = execute_page_rank(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_simulate_remove_module",
+        description=(
+            "Counterfactual scenario: safely clones the graph, deletes a target module in the copy, "
+            "computes the topological blast radius, and cleans up the temporary graph."
+        ),
+    )
+    def nexusact_simulate_remove_module(
+        module_identifier: str,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Isolated counterfactual module removal simulation."""
+        from backend.app.graph.tools.simulation import SimulateRemoveModuleInput, execute_simulate_remove_module
+
+        payload = SimulateRemoveModuleInput(
+            module_identifier=module_identifier,
+            graph_name=graph_name,
+        )
+        output = execute_simulate_remove_module(payload)
+        return output.model_dump_json()
+
     return server
 
 

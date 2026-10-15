@@ -19,8 +19,9 @@ describe("Frontend Foundation UI Components", () => {
   it("renders Header with NexusAct branding and track information", () => {
     render(<Header />);
     expect(screen.getByText("NexusAct")).toBeDefined();
-    expect(screen.getByText(/Engineering Brain/i)).toBeDefined();
+    expect(screen.getByText(/Graph-Native AI That Investigates, Simulates, and Acts/i)).toBeDefined();
     expect(screen.getByText(/Local FalkorDB/i)).toBeDefined();
+
   });
 
   it("renders RoadmapCard displaying validated Phase 1 and Phase 2 items", () => {

@@ -48,17 +48,18 @@ export const Header: React.FC = () => {
                   padding: "0.15rem 0.45rem",
                   borderRadius: "4px",
                   backgroundColor: "rgba(59, 130, 246, 0.15)",
-                  color: "var(--accent-cyan)",
+                  color: "var(--accent-blue)",
                   border: "1px solid rgba(59, 130, 246, 0.3)",
                   fontWeight: 600,
                 }}
               >
-                GAF • Phase 1
+                GAF Architecture
               </span>
             </div>
-            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-              Engineering Brain — Graph-Native AI Agent Foundation
+            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
+              Graph-Native AI That Investigates, Simulates, and Acts
             </p>
+
           </div>
         </div>
 
