@@ -3,10 +3,12 @@
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.api.router import api_router
@@ -15,6 +17,20 @@ from backend.app.core.errors import ErrorResponse, NexusActError
 from backend.app.core.logging import logger
 from backend.app.graph.client import graph_client
 from backend.app.graph.initialization import initialize_schema
+
+
+def _extract_hosts_from_origins(origins: List[str]) -> List[str]:
+    """Derive allowed Host header values from the configured CORS origin list."""
+    hosts = set()
+    for origin in origins:
+        parsed = urlparse(origin)
+        if parsed.hostname:
+            hosts.add(parsed.hostname)
+            if parsed.port:
+                hosts.add(f"{parsed.hostname}:{parsed.port}")
+    # Always allow localhost variants for health checks inside Docker
+    hosts.update(["localhost", "127.0.0.1"])
+    return list(hosts)
 
 
 @asynccontextmanager
@@ -53,13 +69,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 def create_app() -> FastAPI:
     """Builds and configures the FastAPI application."""
+    is_production = settings.APP_ENV == "production"
+
     application = FastAPI(
         title=f"{settings.APP_NAME} API",
         description="Graph-native AI engineering agent API for repository analysis and connected intelligence.",
         version=settings.APP_VERSION,
         lifespan=lifespan,
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
+        # Disable interactive API docs in production (reduce attack surface)
+        docs_url=None if is_production else "/api/docs",
+        redoc_url=None if is_production else "/api/redoc",
         openapi_url="/api/openapi.json",
     )
 
@@ -72,6 +91,12 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # 1b. TrustedHostMiddleware — prevents Host header injection in production
+    if is_production:
+        allowed_hosts = _extract_hosts_from_origins(settings.cors_origin_list)
+        logger.info("Production mode: enforcing TrustedHostMiddleware hosts=%s", allowed_hosts)
+        application.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     # 2. Request Correlation ID & Performance Middleware
     @application.middleware("http")

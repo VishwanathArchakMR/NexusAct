@@ -117,15 +117,21 @@ export const InvestigationWorkspace: React.FC = () => {
   }, [selectedRepoId]);
 
   useEffect(() => {
-    void loadRepositories();
+    (async () => { await loadRepositories(); })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadRepositories]);
 
   useEffect(() => {
     if (selectedRepoId) {
-      void loadRepoMetadata(selectedRepoId);
-      void loadModules(undefined, selectedRepoId);
-      void loadGraph(undefined, selectedRepoId);
+      (async () => {
+        await Promise.all([
+          loadRepoMetadata(selectedRepoId),
+          loadModules(undefined, selectedRepoId),
+          loadGraph(undefined, selectedRepoId),
+        ]);
+      })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepoId, loadRepoMetadata, loadModules, loadGraph]);
 
   const handleRefresh = async () => {

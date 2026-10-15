@@ -1,0 +1,114 @@
+# ==============================================================================
+# NexusAct (GAF) — Production Docker Compose
+#
+# Brings up three services:
+#   falkordb   — FalkorDB v4.4.1 graph database (data persists in named volume)
+#   backend    — FastAPI + MCP server  (port 8000)
+#   frontend   — nginx serving the React SPA  (port 3000 → 80 inside container)
+#
+# Usage:
+#   # First-time or after code changes — build and start:
+#   docker compose -f docker-compose.prod.yml up --build -d
+#
+#   # View live logs:
+#   docker compose -f docker-compose.prod.yml logs -f
+#
+#   # Stop and remove containers (data volume preserved):
+#   docker compose -f docker-compose.prod.yml down
+#
+#   # DESTROY data volume (irreversible):
+#   docker compose -f docker-compose.prod.yml down -v
+#
+# Environment overrides:
+#   Copy .env.example -> .env.prod and set real values before running.
+#   Pass with: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# ==============================================================================
+
+services:
+
+  # ── FalkorDB Graph Database ──────────────────────────────────────────────────
+  falkordb:
+    image: falkordb/falkordb:v4.4.1
+    container_name: nexusact_falkordb_prod
+    # Bind strictly to loopback; backend accesses it over the internal network.
+    # Remove the host port binding in production if you don't need external access.
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - nexusact_falkordb_data:/data
+    restart: unless-stopped
+    environment:
+      - BROWSER=0
+      # AOF persistence — every write is synced to disk.
+      - REDIS_ARGS=--appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - nexusact_internal
+
+  # ── FastAPI Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nexusact_backend_prod
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PRIMARY_GRAPH=nexusact_main
+      # Override CORS_ORIGINS with your actual frontend URL in production.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - nexusact_internal
+    # Repo clone cache persists across container restarts
+    volumes:
+      - nexusact_repo_cache:/home/nexusact/.cache/nexusact
+
+  # ── React Frontend (nginx) ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Backend URL reachable from the end-user's browser (not internal Docker network)
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    container_name: nexusact_frontend_prod
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - nexusact_internal
+
+volumes:
+  nexusact_falkordb_data:
+    name: nexusact_falkordb_data
+  nexusact_repo_cache:
+    name: nexusact_repo_cache
+
+networks:
+  nexusact_internal:
+    driver: bridge

@@ -235,8 +235,7 @@ def execute_resolve_entity(
         names = [f"'{m.module_name}' ({m.module_id})" for m in matches[:5]]
         names_str = ", ".join(names)
         prompt = (
-            f"The query is ambiguous and matched multiple modules: {names_str}. "
-            "Please clarify which module you mean."
+            f"The query is ambiguous and matched multiple modules: {names_str}. Please clarify which module you mean."
         )
         return EntityResolutionOutput(
             query=query,
