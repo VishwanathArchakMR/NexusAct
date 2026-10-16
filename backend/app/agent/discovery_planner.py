@@ -95,7 +95,7 @@ class UniversalDiscoveryPlanner:
             target_entities = ["Model", "Dataset", "Paper", "Organization"]
             selected_sources.update(["huggingface", "openalex", "crossref", "wikidata"])
 
-        # Extract search keywords: remove stop words
+        # Extract search keywords: remove purely grammatical stop words
         stop_words = {
             "what",
             "which",
@@ -111,46 +111,27 @@ class UniversalDiscoveryPlanner:
             "in",
             "show",
             "find",
-            "map",
-            "connect",
-            "connected",
+            "tell",
+            "me",
+            "about",
             "between",
             "this",
             "these",
             "for",
             "of",
-            "ecosystem",
-            "open-source",
-            "ai",
-            "model",
-            "models",
-            "dataset",
-            "datasets",
-            "paper",
-            "papers",
-            "organization",
-            "organizations",
-            "publish",
-            "publishes",
-            "published",
-            "related",
-            "research",
-            "concept",
-            "concepts",
-            "used",
-            "train",
-            "evaluate",
-            "show",
-            "explicitly",
-            "reference",
-            "references",
-            "behind",
+            "does",
+            "can",
+            "with",
+            "from",
+            "across",
+            "documented",
+            "as",
         }
         words = re.findall(r"[A-Za-z0-9_-]+", q_lower)
         keywords = [w for w in words if len(w) > 2 and w not in stop_words]
 
-        # If all keywords removed, fallback to main concept or "artificial intelligence"
-        search_term = " ".join(keywords[:3]) if keywords else "transformer"
+        # Search term selection
+        search_term = " ".join(keywords[:3]) if keywords else "artificial intelligence"
 
         return UniversalInvestigationPlan(
             question=question,
@@ -168,23 +149,25 @@ class UniversalDiscoveryPlanner:
         question: str,
         plan_override: UniversalInvestigationPlan | None = None,
     ) -> UniversalInvestigationResult:
-        """Executes the investigation plan: queries sources, persists records, analyzes paths."""
+        """Executes the investigation plan: queries sources, deduplicates records, persists, and analyzes paths."""
         start_ts = time.monotonic()
         plan = plan_override or self.create_plan(question)
 
-        all_records: list[SourceRecord] = []
+        dedup_records: dict[str, SourceRecord] = {}
         sources_status: dict[str, dict[str, Any]] = {}
         limitations: list[str] = []
 
-        # 1. Fetch bounded records from selected connectors
+        # 1. Fetch bounded records from selected connectors with canonical deduplication
+        raw_to_canon: dict[str, str] = {}
         for source_id in plan.selected_source_ids:
             connector = ConnectorRegistry.get(source_id)
             if not connector:
                 limitations.append(f"Connector '{source_id}' is not registered or unavailable.")
                 continue
 
+            connector_query_text = plan.search_keywords[0] if plan.search_keywords else "machine learning"
             query = ConnectorQuery(
-                query_text=plan.search_keywords[0] if plan.search_keywords else "machine learning",
+                query_text=connector_query_text,
                 entity_types=plan.target_entity_types,
                 max_results=plan.max_results_per_source,
             )
@@ -197,7 +180,38 @@ class UniversalDiscoveryPlanner:
                     "error": res.error,
                     "coverage_notes": res.coverage_notes,
                 }
-                all_records.extend(res.records)
+                for rec in res.records:
+                    # Canonical identity keying (e.g. DOI for papers across Crossref / OpenAlex)
+                    doi = rec.data.get("doi")
+                    if doi and rec.entity_type == "Paper":
+                        norm_doi = doi.lower().replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+                        canon_key = f"doi:{norm_doi}"
+                    else:
+                        canon_key = f"{rec.source_id}:{rec.external_id}"
+
+                    raw_id = f"{rec.source_id}:{rec.external_id}"
+                    raw_to_canon[raw_id] = canon_key
+
+                    # Normalize relationship endpoints to canonical keys where known
+                    for rel in rec.relationships:
+                        if rel.source_entity_id == raw_id:
+                            rel.source_entity_id = canon_key
+
+                    if canon_key in dedup_records:
+                        # Merge relationships and coverage notes without duplicating entity
+                        existing = dedup_records[canon_key]
+                        existing_rel_keys = {
+                            (r.source_entity_id, r.relation_type, r.target_entity_id) for r in existing.relationships
+                        }
+                        for rel in rec.relationships:
+                            rel_key = (rel.source_entity_id, rel.relation_type, rel.target_entity_id)
+                            if rel_key not in existing_rel_keys:
+                                existing.relationships.append(rel)
+                                existing_rel_keys.add(rel_key)
+                        existing.coverage_notes = list(set(existing.coverage_notes + rec.coverage_notes))
+                    else:
+                        dedup_records[canon_key] = rec
+
                 if res.coverage_notes:
                     limitations.extend(res.coverage_notes)
             except Exception as exc:
@@ -208,6 +222,8 @@ class UniversalDiscoveryPlanner:
                     "coverage_notes": [f"Source failed during search: {exc}"],
                 }
                 limitations.append(f"Source '{source_id}' failed: {exc}")
+
+        all_records = list(dedup_records.values())
 
         # 2. Persist records into FalkorDB public graph
         persist_counts = self.persister.persist_records(all_records)
@@ -234,31 +250,56 @@ class UniversalDiscoveryPlanner:
                 f"Discovered {len(all_records)} discrete public entities; no direct graph edges connect them yet."
             )
 
-        # Entity and Relationship summarization for UI
-        entities_summary = [
-            {
-                "id": f"{r.source_id}:{r.external_id}",
-                "type": r.entity_type,
-                "name": r.data.get("title") or r.data.get("name") or r.external_id,
-                "source": r.source_id,
-                "url": r.canonical_url,
-            }
-            for r in all_records
-        ]
+        # Build canonical ID map for entities (mapping provider IDs to canonical DOI for papers)
+        canonical_map: dict[str, str] = dict(raw_to_canon)
+        for r in all_records:
+            ent_raw_id = f"{r.source_id}:{r.external_id}"
+            doi = r.data.get("doi")
+            if doi and r.entity_type == "Paper":
+                norm_doi = doi.lower().replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+                canon_id = f"doi:{norm_doi}"
+            else:
+                canon_id = ent_raw_id
+            canonical_map[ent_raw_id] = canon_id
 
+        # Entity summarization with guaranteed unique canonical IDs for UI
+        seen_ent_ids: set[str] = set()
+        entities_summary = []
+        for r in all_records:
+            ent_raw_id = f"{r.source_id}:{r.external_id}"
+            ent_id = canonical_map.get(ent_raw_id, ent_raw_id)
+            if ent_id not in seen_ent_ids:
+                seen_ent_ids.add(ent_id)
+                entities_summary.append(
+                    {
+                        "id": ent_id,
+                        "type": r.entity_type,
+                        "name": r.data.get("title") or r.data.get("name") or r.external_id,
+                        "source": r.source_id,
+                        "url": r.canonical_url,
+                    }
+                )
+
+        # Relationship summarization with unique directed edge keys mapped to canonical identities
+        seen_rel_keys: set[tuple[str, str, str]] = set()
         relationships_summary = []
         for r in all_records:
             for rel in r.relationships:
-                relationships_summary.append(
-                    {
-                        "source": rel.source_entity_id,
-                        "target": rel.target_entity_id,
-                        "type": rel.relation_type,
-                        "confidence": rel.confidence,
-                        "evidence": rel.evidence_field,
-                        "provenance_url": rel.provenance_url,
-                    }
-                )
+                canon_src = canonical_map.get(rel.source_entity_id, rel.source_entity_id)
+                canon_tgt = canonical_map.get(rel.target_entity_id, rel.target_entity_id)
+                rel_key = (canon_src, rel.relation_type, canon_tgt)
+                if rel_key not in seen_rel_keys:
+                    seen_rel_keys.add(rel_key)
+                    relationships_summary.append(
+                        {
+                            "source": canon_src,
+                            "target": canon_tgt,
+                            "type": rel.relation_type,
+                            "confidence": rel.confidence,
+                            "evidence": rel.evidence_field,
+                            "provenance_url": rel.provenance_url,
+                        }
+                    )
 
         summary = (
             f"Universal Ask GAF analyzed {len(all_records)} entities and {len(relationships_summary)} "

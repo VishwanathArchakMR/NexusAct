@@ -638,24 +638,26 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
         </p>
         {subgraph && subgraph.nodes.length > 0 ? (
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-            {subgraph.nodes.slice(0, 20).map((n) => (
-              <span
-                key={n.id}
-                style={{
-                  fontSize: "0.75rem",
-                  backgroundColor: "#f1f5f9",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "14px",
-                  padding: "0.2rem 0.6rem",
-                  color: "#334155",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                }}
-              >
-                <Layers size={11} color="#64748b" /> {n.label} ({n.type})
-              </span>
-            ))}
+            {Array.from(new Map(subgraph.nodes.map((n) => [n.id, n])).values())
+              .slice(0, 20)
+              .map((n) => (
+                <span
+                  key={n.id}
+                  style={{
+                    fontSize: "0.75rem",
+                    backgroundColor: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "14px",
+                    padding: "0.2rem 0.6rem",
+                    color: "#334155",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                  }}
+                >
+                  <Layers size={11} color="#64748b" /> {n.label} ({n.type})
+                </span>
+              ))}
             {subgraph.nodes.length > 20 && (
               <span style={{ fontSize: "0.75rem", color: "#64748b", alignSelf: "center" }}>
                 +{subgraph.nodes.length - 20} more in database

@@ -127,9 +127,11 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       return { nodes: [], edges: [], width: 700, height: 450, truncated: false };
     }
 
-    const visibleNodes = showAll ? data.nodes : data.nodes.slice(0, MAX_VISIBLE_NODES);
+    const rawVisibleNodes = showAll ? data.nodes : data.nodes.slice(0, MAX_VISIBLE_NODES);
+    // Deduplicate nodes by ID to enforce UI key integrity and stable coordinates
+    const visibleNodes = Array.from(new Map(rawVisibleNodes.map((n) => [n.id, n])).values());
     const truncated = !showAll && data.nodes.length > MAX_VISIBLE_NODES;
-    const tid = targetNodeId || data.nodes[0]?.id;
+    const tid = targetNodeId || visibleNodes[0]?.id;
 
     const lanes = assignLanes(visibleNodes, data.edges, tid);
     const roles = computeRoles(visibleNodes, data.edges, tid);
@@ -170,9 +172,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       });
     }
 
-    // Filter edges: only include edges between visible nodes
+    // Filter edges: only include edges between visible nodes and deduplicate
     const visibleIds = new Set(visibleNodes.map((n) => n.id));
-    const visibleEdges = data.edges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
+    const seenEdges = new Set<string>();
+    const visibleEdges = data.edges.filter((e) => {
+      if (!visibleIds.has(e.source) || !visibleIds.has(e.target)) return false;
+      const edgeKey = `${e.source}->${e.target}:${e.id || e.label}`;
+      if (seenEdges.has(edgeKey)) return false;
+      seenEdges.add(edgeKey);
+      return true;
+    });
 
     return {
       nodes: visibleNodes.map((n) => ({

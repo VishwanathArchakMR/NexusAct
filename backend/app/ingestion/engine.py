@@ -124,7 +124,7 @@ class RepositoryIngestionEngine:
                 MATCH (r:Repository {id: $repo_id}), (m:Module {id: $mod_id})
                 MERGE (r)-[:CONTAINS]->(m)
                 """,
-                params={"repo_id": f"repo:{repo_name}", "mod_id": mod_id},
+                params={"repo_id": resolved_repo_id, "mod_id": mod_id},
                 graph_name=target_graph,
             )
 
@@ -258,6 +258,13 @@ class RepositoryIngestionEngine:
                     )
         else:
             data_gaps.append("PR peer review records unavailable in local Git history")
+
+        if not ast_parser.module_map:
+            data_gaps.append(
+                "No supported Python source files (.py) found in repository. "
+                "TypeScript, JavaScript, and non-Python source files are not "
+                "currently parsed into code dependency modules."
+            )
 
         if ast_parser.skipped_files:
             data_gaps.append(f"{len(ast_parser.skipped_files)} file(s) skipped due to syntax or encoding errors")

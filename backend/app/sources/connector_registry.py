@@ -217,10 +217,22 @@ class ConnectorRegistry:
         cls.init_defaults()
         return list(cls._connectors.keys())
 
+    _cached_health: dict[str, dict[str, Any]] | None = None
+    _cached_health_ts: float = 0.0
+    _HEALTH_CACHE_TTL_S: float = 60.0
+
     @classmethod
-    def health_status(cls) -> dict[str, dict[str, Any]]:
-        """Returns health status for all registered connectors."""
+    def health_status(cls, force_refresh: bool = False) -> dict[str, dict[str, Any]]:
+        """Returns health status for all registered connectors, with bounded TTL caching."""
         cls.init_defaults()
+        now = time.monotonic()
+        if (
+            not force_refresh
+            and cls._cached_health is not None
+            and (now - cls._cached_health_ts) < cls._HEALTH_CACHE_TTL_S
+        ):
+            return cls._cached_health
+
         status: dict[str, dict[str, Any]] = {}
         for sid, conn in cls._connectors.items():
             try:
@@ -242,6 +254,8 @@ class ConnectorRegistry:
                     "entity_types": conn.ENTITY_TYPES,
                     "requires_auth": conn.REQUIRES_AUTH,
                 }
+        cls._cached_health = status
+        cls._cached_health_ts = now
         return status
 
     @classmethod

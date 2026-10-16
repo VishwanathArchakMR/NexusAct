@@ -199,13 +199,13 @@ class PublicGraphPersister:
         nodes_query = f"""
         MATCH (n)
         WHERE NOT n:{LABEL_SOURCE_RECORD}
-        RETURN n.id AS id, labels(n)[0] AS type, coalesce(n.name, n.id) AS label, properties(n) AS props
+        RETURN DISTINCT n.id AS id, labels(n)[0] AS type, coalesce(n.name, n.id) AS label, properties(n) AS props
         LIMIT {limit}
         """
         edges_query = f"""
         MATCH (s)-[r]->(t)
         WHERE NOT s:{LABEL_SOURCE_RECORD} AND NOT t:{LABEL_SOURCE_RECORD}
-        RETURN s.id AS source, t.id AS target, type(r) AS type, properties(r) AS props
+        RETURN DISTINCT s.id AS source, t.id AS target, type(r) AS type, properties(r) AS props
         LIMIT {limit * 2}
         """
 
@@ -213,9 +213,14 @@ class PublicGraphPersister:
             node_rows = self.client.query(nodes_query, graph_name=self.graph_name)
             edge_rows = self.client.query(edges_query, graph_name=self.graph_name)
 
-            nodes = [
-                {"id": r[0], "type": r[1], "label": r[2], "properties": r[3] if len(r) > 3 else {}} for r in node_rows
-            ]
+            seen_nodes: set[str] = set()
+            nodes = []
+            for r in node_rows:
+                node_id = str(r[0])
+                if node_id not in seen_nodes:
+                    seen_nodes.add(node_id)
+                    nodes.append({"id": node_id, "type": r[1], "label": r[2], "properties": r[3] if len(r) > 3 else {}})
+
             edges = [
                 {"source": r[0], "target": r[1], "type": r[2], "properties": r[3] if len(r) > 3 else {}}
                 for r in edge_rows

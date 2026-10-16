@@ -33,7 +33,7 @@ class OpenAlexConnector(SourceConnector):
 
     API_BASE: ClassVar[str] = "https://api.openalex.org/"
 
-    def _http_get(self, path: str, params: dict[str, Any]) -> tuple[int, Any]:
+    def _http_get(self, path: str, params: dict[str, Any], timeout: float | None = None) -> tuple[int, Any]:
         """Performs a bounded GET request to the fixed OpenAlex API base."""
         self._rate_limit()
         # OpenAlex polite pool via User-Agent mailto header
@@ -48,8 +48,9 @@ class OpenAlexConnector(SourceConnector):
                 "Accept": "application/json",
             },
         )
+        t_out = timeout or self.REQUEST_TIMEOUT_S
         try:
-            with urllib.request.urlopen(req, timeout=self.REQUEST_TIMEOUT_S) as response:
+            with urllib.request.urlopen(req, timeout=t_out) as response:
                 status = response.getcode()
                 raw_bytes = response.read(self.MAX_RESPONSE_BYTES)
                 text = raw_bytes.decode("utf-8", errors="replace")
@@ -60,9 +61,9 @@ class OpenAlexConnector(SourceConnector):
             raise
 
     def health_check(self) -> tuple[bool, str]:
-        """Probes OpenAlex works endpoint with per-page=1."""
+        """Probes OpenAlex works endpoint with per-page=1 and fast timeout."""
         try:
-            status, data = self._http_get("works", {"per-page": 1})
+            status, data = self._http_get("works", {"per-page": 1}, timeout=3.0)
             if status == 200 and isinstance(data, dict) and "results" in data:
                 return True, "OpenAlex API reachable"
             return False, f"Unexpected response code: {status}"

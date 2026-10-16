@@ -42,7 +42,7 @@ class WikidataConnector(SourceConnector):
         "P127": ("AFFILIATED_WITH", "owned by"),
     }
 
-    def _http_get(self, params: dict[str, Any]) -> tuple[int, Any]:
+    def _http_get(self, params: dict[str, Any], timeout: float | None = None) -> tuple[int, Any]:
         """Performs a bounded GET request to the fixed Wikidata API base."""
         self._rate_limit()
         params["format"] = "json"
@@ -56,8 +56,9 @@ class WikidataConnector(SourceConnector):
                 "Accept": "application/json",
             },
         )
+        t_out = timeout or self.REQUEST_TIMEOUT_S
         try:
-            with urllib.request.urlopen(req, timeout=self.REQUEST_TIMEOUT_S) as response:
+            with urllib.request.urlopen(req, timeout=t_out) as response:
                 status = response.getcode()
                 raw_bytes = response.read(self.MAX_RESPONSE_BYTES)
                 text = raw_bytes.decode("utf-8", errors="replace")
@@ -68,7 +69,7 @@ class WikidataConnector(SourceConnector):
             raise
 
     def health_check(self) -> tuple[bool, str]:
-        """Probes Wikidata entity search with limit=1."""
+        """Probes Wikidata entity search with limit=1 and fast timeout."""
         try:
             status, data = self._http_get(
                 {
@@ -76,7 +77,8 @@ class WikidataConnector(SourceConnector):
                     "search": "artificial intelligence",
                     "language": "en",
                     "limit": 1,
-                }
+                },
+                timeout=3.0,
             )
             if status == 200 and isinstance(data, dict) and "search" in data:
                 return True, "Wikidata API reachable"

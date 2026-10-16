@@ -123,6 +123,9 @@ export const InvestigationWorkspace: React.FC = () => {
 
   useEffect(() => {
     if (selectedRepoId) {
+      setReport(null);
+      setSelectedModule("");
+      setError(null);
       (async () => {
         await Promise.all([
           loadRepoMetadata(selectedRepoId),
@@ -205,6 +208,7 @@ export const InvestigationWorkspace: React.FC = () => {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Investigation failed");
+      setReport(null);
     } finally {
       setIsLoading(false);
     }
@@ -263,7 +267,13 @@ export const InvestigationWorkspace: React.FC = () => {
 
           <select
             value={selectedRepoId}
-            onChange={(e) => setSelectedRepoId(e.target.value)}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setSelectedRepoId(newId);
+              setReport(null);
+              setSelectedModule("");
+              setError(null);
+            }}
             style={{
               padding: "0.45rem 0.85rem",
               borderRadius: "6px",
@@ -750,24 +760,70 @@ export const InvestigationWorkspace: React.FC = () => {
       {report?.status === "UNRESOLVED" && (
         <div
           style={{
-            backgroundColor: "#f8fafc",
+            backgroundColor: "#fffbeb",
             borderRadius: "8px",
-            border: "1px solid var(--border-subtle)",
+            border: "1px solid #fde68a",
             padding: "1rem 1.25rem",
-            color: "var(--text-secondary)",
+            color: "#92400e",
             fontSize: "0.82rem",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: "0.3rem" }}>
-            <AlertTriangle size={16} color="var(--text-muted)" />
-            Target Unresolved
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "#92400e", marginBottom: "0.3rem" }}>
+            <AlertTriangle size={16} color="#d97706" />
+            Target Unresolved in Selected Repository Graph
           </div>
-          {report.summary}
+          <p style={{ margin: "0.2rem 0 0.5rem 0" }}>{report.unresolved_reason || report.summary}</p>
+          {report.ambiguity_candidates && report.ambiguity_candidates.length > 0 && (
+            <div style={{ marginTop: "0.5rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#78350f" }}>
+                Available candidate modules in this graph:
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.3rem" }}>
+                {report.ambiguity_candidates.map((c) => (
+                  <button
+                    key={c.module_id}
+                    onClick={() => {
+                      setSelectedModule(c.module_id);
+                      handleInvestigate(c.module_id);
+                    }}
+                    style={{
+                      padding: "0.3rem 0.6rem",
+                      fontSize: "0.75rem",
+                      borderRadius: "4px",
+                      border: "1px solid #d97706",
+                      backgroundColor: "#ffffff",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      color: "#92400e",
+                    }}
+                  >
+                    {c.module_name || c.module_id}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Verified Status Banner */}
-      {report && report.status === "COMPLETED" && (
+      {/* Historical Report Notice if report belongs to a different repository */}
+      {report && report.repository_id && report.repository_id !== selectedRepoId && (
+        <div
+          style={{
+            padding: "0.6rem 1rem",
+            backgroundColor: "#fef3c7",
+            border: "1px solid #fde68a",
+            borderRadius: "6px",
+            fontSize: "0.78rem",
+            color: "#92400e",
+          }}
+        >
+          <strong>Historical Note:</strong> This investigation was run on repository <em>{report.repository_id}</em>. Select that repository from the dropdown to see active graph evidence, or click <strong>Investigate</strong> to analyze <em>{selectedRepoId}</em>.
+        </div>
+      )}
+
+      {/* Verified Status Banner (Scoped strictly to current repository) */}
+      {report && report.status === "COMPLETED" && (!report.repository_id || report.repository_id === selectedRepoId) && (
         <div
           style={{
             backgroundColor: "#ffffff",

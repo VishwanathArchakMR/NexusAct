@@ -73,6 +73,8 @@ class InvestigationReport(BaseModel):
     ambiguity_candidates: Optional[List[Dict[str, Any]]] = None
     repository_id: Optional[str] = None
     graph_name: Optional[str] = None
+    commit_sha: Optional[str] = None
+    unresolved_reason: Optional[str] = None
     is_heuristic_fallback: bool = True
     budget_used: int = 0
     budget_remaining: int = 0
@@ -115,15 +117,57 @@ class AdaptiveInvestigationAgent:
         provider = custom_provider or self.llm
         is_heuristic = not provider.is_available
 
+        commit_sha: str = ""
+        if resolved_repo_id:
+            repo_rec = repo_registry.get_repository(resolved_repo_id)
+            if repo_rec:
+                commit_sha = repo_rec.commit_sha or ""
+
         # 1. Target Resolution
         resolved_id: Optional[str] = None
         target_name: str = ""
 
         if module_identifier and module_identifier.strip():
-            resolved_id = resolve_module_id(self.client, module_identifier.strip(), graph_name=target_graph)
+            clean_ident = module_identifier.strip()
+            resolved_id = resolve_module_id(self.client, clean_ident, graph_name=target_graph)
             if not resolved_id:
-                raise ValueError(
-                    f"Target module '{module_identifier}' could not be resolved in graph '{target_graph}'."
+                # Bounded candidate lookup for structured unresolved response
+                cand_res = execute_resolve_entity(
+                    ResolveEntityInput(query=clean_ident, graph_name=target_graph),
+                    client=self.client,
+                )
+                candidates_payload = [c.model_dump() for c in cand_res.candidates]
+                unresolved_msg = f"Target module '{clean_ident}' cannot be resolved in graph '{target_graph}'."
+                if cand_res.candidates:
+                    top_names = ", ".join(c.module_name for c in cand_res.candidates[:3])
+                    unresolved_msg += f" Did you mean one of: {top_names}?"
+                else:
+                    # Check whether graph contains any modules at all
+                    try:
+                        m_cnt = self.client.query(f"MATCH (m:{LABEL_MODULE}) RETURN count(m)", graph_name=target_graph)[
+                            0
+                        ][0]
+                        if m_cnt == 0:
+                            unresolved_msg += f" The graph '{target_graph}' currently has 0 parsed modules."
+                    except Exception:
+                        pass
+
+                inv_id = f"inv_{uuid.uuid4().hex[:8]}"
+                return InvestigationReport(
+                    investigation_id=inv_id,
+                    question=question,
+                    target_module_id=clean_ident,
+                    target_module_name=clean_ident,
+                    status="UNRESOLVED",
+                    unresolved_reason=unresolved_msg,
+                    summary=unresolved_msg,
+                    ambiguity_candidates=candidates_payload,
+                    repository_id=resolved_repo_id,
+                    graph_name=target_graph,
+                    commit_sha=commit_sha,
+                    budget_used=0,
+                    budget_remaining=self.max_tool_budget,
+                    is_heuristic_fallback=is_heuristic,
                 )
         else:
             # Natural language entity resolution
@@ -148,6 +192,7 @@ class AdaptiveInvestigationAgent:
                     ambiguity_candidates=[c.model_dump() for c in res_entity.candidates],
                     repository_id=resolved_repo_id,
                     graph_name=target_graph,
+                    commit_sha=commit_sha,
                     budget_used=0,
                     budget_remaining=self.max_tool_budget,
                     is_heuristic_fallback=is_heuristic,
@@ -161,19 +206,22 @@ class AdaptiveInvestigationAgent:
                 )
                 if not is_repo_wide:
                     inv_id = f"inv_{uuid.uuid4().hex[:8]}"
+                    unresolved_msg = (
+                        f"Could not resolve any target module from the question '{question}' "
+                        f"in graph '{target_graph}'. Please specify a target module or ask "
+                        "about repository-wide properties like PageRank or source metadata."
+                    )
                     return InvestigationReport(
                         investigation_id=inv_id,
                         question=question,
                         target_module_id="",
                         target_module_name="",
                         status="UNRESOLVED",
-                        summary=(
-                            f"Could not resolve any target module from the question '{question}' "
-                            f"in graph '{target_graph}'. Please specify a target module or ask "
-                            "about repository-wide properties like PageRank or source metadata."
-                        ),
+                        unresolved_reason=unresolved_msg,
+                        summary=unresolved_msg,
                         repository_id=resolved_repo_id,
                         graph_name=target_graph,
+                        commit_sha=commit_sha,
                         budget_used=0,
                         budget_remaining=self.max_tool_budget,
                         is_heuristic_fallback=is_heuristic,
@@ -422,6 +470,7 @@ class AdaptiveInvestigationAgent:
             action_proposal=action_proposal,
             repository_id=resolved_repo_id,
             graph_name=target_graph,
+            commit_sha=commit_sha,
             is_heuristic_fallback=is_heuristic,
             budget_used=len(steps),
             budget_remaining=remaining_budget,

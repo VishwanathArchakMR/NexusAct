@@ -174,6 +174,8 @@ export interface InvestigationReport {
   ambiguity_candidates?: CandidateMatch[] | null;
   repository_id?: string | null;
   graph_name?: string | null;
+  commit_sha?: string | null;
+  unresolved_reason?: string | null;
   is_heuristic_fallback?: boolean;
   budget_used: number;
   budget_remaining: number;

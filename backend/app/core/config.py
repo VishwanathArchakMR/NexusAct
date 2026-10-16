@@ -1,6 +1,6 @@
 """Application configuration settings using Pydantic v2 Settings."""
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:5174,http://127.0.0.1:5174,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
 
     # FalkorDB Database
     FALKORDB_HOST: str = "127.0.0.1"
@@ -55,6 +59,13 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def cors_origin_regex(self) -> Optional[str]:
+        """In development mode, dynamically permit any loopback port (5173-5185, etc.). In production, None."""
+        if self.APP_ENV != "production":
+            return r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$"
+        return None
 
     @field_validator("FALKORDB_PRIMARY_GRAPH")
     @classmethod
