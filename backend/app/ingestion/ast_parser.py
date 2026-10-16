@@ -64,6 +64,11 @@ IGNORE_DIRS = {
 }
 
 
+# Guard bounds for AST ingestion
+MAX_FILES = 2000
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
+
+
 class RepositoryAstParser:
     """Scans and parses a Python repository using the native ast module."""
 
@@ -78,7 +83,7 @@ class RepositoryAstParser:
         self.parser_warnings: List[str] = []
 
     def discover_files(self) -> List[Path]:
-        """Discovers all eligible Python source files in the repository."""
+        """Discovers all eligible Python source files in the repository with symlink & count bounds."""
         py_files: List[Path] = []
         for root, dirs, files in os.walk(self.root_path):
             # Prune ignored directories
@@ -86,6 +91,25 @@ class RepositoryAstParser:
             for file in files:
                 if file.endswith(".py"):
                     full_path = Path(root) / file
+                    # Symlink containment check: reject symlinks escaping repository root
+                    try:
+                        if full_path.is_symlink():
+                            resolved = full_path.resolve()
+                            if not resolved.is_relative_to(self.root_path):
+                                self.skipped_files.append(
+                                    {"file": str(full_path), "error": "Symlink escapes repository root"}
+                                )
+                                self.parser_warnings.append(
+                                    f"Skipped symlink '{full_path.name}' escaping repository root"
+                                )
+                                continue
+                    except (OSError, ValueError):
+                        continue
+
+                    if len(py_files) >= MAX_FILES:
+                        self.parser_warnings.append(f"Reached maximum file scan limit ({MAX_FILES} files)")
+                        return py_files
+
                     py_files.append(full_path)
         return py_files
 
@@ -131,6 +155,13 @@ class RepositoryAstParser:
 
         # Step 2: Parse AST of each file and extract imports
         for rel_path, file_info in self.file_map.items():
+            if file_info.size_bytes > MAX_FILE_SIZE_BYTES:
+                self.skipped_files.append(
+                    {"file": rel_path, "error": f"File size ({file_info.size_bytes}B) exceeds 2MB limit"}
+                )
+                self.parser_warnings.append(f"Skipped file '{rel_path}': size exceeds 2MB limit")
+                continue
+
             abs_path = self.root_path / rel_path
             try:
                 content = abs_path.read_text(encoding="utf-8", errors="replace")

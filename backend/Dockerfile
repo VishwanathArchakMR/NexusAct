@@ -24,17 +24,15 @@ RUN addgroup --system nexusact && adduser --system --ingroup nexusact nexusact
 
 WORKDIR /app
 
-# ── Python dependency layer (cached unless pyproject.toml changes) ───────────
-COPY pyproject.toml uv.lock ./
-
-# Install uv for fast dependency resolution, then install runtime deps only.
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system --no-dev --no-cache .
-
-# ── Application source ────────────────────────────────────────────────────────
+# ── Application source and build files ────────────────────────────────────────
+COPY pyproject.toml uv.lock README.md ./
 COPY backend/ ./backend/
 COPY mcp_server/ ./mcp_server/
 COPY .env.example .env.example
+
+# Install uv for fast dependency resolution, then install runtime deps.
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache .
 
 # Writable cache directory for repo clones
 RUN mkdir -p /home/nexusact/.cache/nexusact && \

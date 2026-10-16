@@ -37,3 +37,26 @@ def test_cors_headers_handling():
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == origin
+
+
+def test_production_mode_security_hardening(monkeypatch):
+    """Verify that in production mode, docs are disabled and TrustedHostMiddleware blocks untrusted hosts."""
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    from backend.app.main import create_app
+
+    prod_app = create_app()
+    prod_client = TestClient(prod_app)
+
+    # 1. Docs and redoc return 404
+    docs_resp = prod_client.get("/api/docs")
+    assert docs_resp.status_code == 404
+    redoc_resp = prod_client.get("/api/redoc")
+    assert redoc_resp.status_code == 404
+
+    # 2. Trusted host succeeds
+    trusted_resp = prod_client.get("/api/v1/health", headers={"Host": "localhost"})
+    assert trusted_resp.status_code == 200
+
+    # 3. Untrusted Host header is rejected by TrustedHostMiddleware (400 Invalid Host Header)
+    untrusted_resp = prod_client.get("/api/v1/health", headers={"Host": "evil-attacker.com"})
+    assert untrusted_resp.status_code == 400

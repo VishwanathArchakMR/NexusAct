@@ -3,13 +3,14 @@
 **Graph-Native AI That Investigates, Simulates, and Acts**  
 *Architecture: GraphAction Fabric (GAF)*
 
+[![CI Quality Gate](https://github.com/VishwanathArchakMR/NexusAct/actions/workflows/ci.yml/badge.svg)](https://github.com/VishwanathArchakMR/NexusAct/actions/workflows/ci.yml)
 [![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.4.1-blue)](https://www.falkordb.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![MCP](https://img.shields.io/badge/MCP-2.3.0-purple)](https://modelcontextprotocol.io/)
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-62%2F62%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-65%2F65%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-8%2F8%20passing-brightgreen)](./frontend/tests)
 
 ---
@@ -156,3 +157,12 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of 
 7. **TrustedHostMiddleware:** Enabled in `APP_ENV=production` to prevent Host header injection attacks.
 8. **Non-root Docker containers:** Both backend and frontend containers run as a non-root `nexusact` system user.
 9. **API Docs hidden in production:** Swagger UI and ReDoc are disabled when `APP_ENV=production`.
+
+---
+
+## 7. Verification Reports & Demonstration
+
+- **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script.
+- **Phase 6 Release Verification Report:** [`docs/PHASE6_RELEASE_REPORT.md`](docs/PHASE6_RELEASE_REPORT.md) — Audit trail, CI specifications, test verification, and commit reconciliation.
+- **Deployment Guide:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Production Compose and cloud hosting analysis.
+

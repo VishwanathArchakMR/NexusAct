@@ -28,8 +28,8 @@ def _extract_hosts_from_origins(origins: List[str]) -> List[str]:
             hosts.add(parsed.hostname)
             if parsed.port:
                 hosts.add(f"{parsed.hostname}:{parsed.port}")
-    # Always allow localhost variants for health checks inside Docker
-    hosts.update(["localhost", "127.0.0.1"])
+    # Always allow localhost variants, internal docker hostnames, and test client
+    hosts.update(["localhost", "127.0.0.1", "backend", "testserver", "localhost:8000", "127.0.0.1:8000"])
     return list(hosts)
 
 
