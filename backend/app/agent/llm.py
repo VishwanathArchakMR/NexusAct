@@ -222,16 +222,122 @@ Respond ONLY with a JSON object matching this schema:
             )
 
 
+class GeminiProvider(BaseLLMProvider):
+    """Google Gemini Developer API provider for structured, bounded tool planning."""
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or settings.GEMINI_API_KEY
+        self.model = model or settings.GEMINI_MODEL or "gemini-2.5-flash"
+        self._client: Any = None
+        if self.api_key:
+            try:
+                from google import genai
+
+                self._client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                logger.warning("Failed to initialize Google GenAI client: %s", e)
+
+    @property
+    def name(self) -> str:
+        return f"gemini ({self.model})"
+
+    @property
+    def is_available(self) -> bool:
+        return bool(self.api_key and self._client is not None)
+
+    async def decide_next_step(
+        self,
+        question: str,
+        target_module_id: str,
+        available_tools: List[Dict[str, Any]],
+        investigation_history: List[Dict[str, Any]],
+        remaining_budget: int,
+    ) -> LLMDecision:
+        if not self.is_available:
+            return LLMDecision(
+                action="finish",
+                finish_summary="Gemini API is not configured or unavailable.",
+            )
+
+        tools_desc = "\n".join([f"- {t['name']}: {t.get('description', '')}" for t in available_tools])
+        history_desc = json.dumps(investigation_history, indent=2)
+
+        prompt = f"""You are the NexusAct Graph Intelligence Agent Planner.
+Your job is to select the most appropriate graph tool to investigate this engineering question:
+"{question}"
+
+Target entity under investigation: {target_module_id}
+Remaining tool budget: {remaining_budget}
+
+Available MCP Graph Tools:
+{tools_desc}
+
+Investigation history so far:
+{history_desc}
+
+INSTRUCTIONS:
+1. Examine the question, target, and what has already been investigated.
+2. If more evidence is needed and budget allows, choose ONE tool from the available tools list:
+   - For impact or break questions: use 'nexusact_trace_impact'
+   - For contributor/ownership questions: use 'nexusact_who_knows'
+   - For relationship paths between two components: use 'nexusact_shortest_path'
+   - For immediate caller/callee connections: use 'nexusact_graph_neighborhood'
+   - For centrality/architectural rank: use 'nexusact_page_rank'
+   - For isolated counterfactual simulation: use 'nexusact_simulate_remove_module'
+   - For dependency vulnerability triage: use 'nexusact_security_triage'
+   - For suspicious fraud pattern investigation: use 'nexusact_investigate_fraud'
+3. If sufficient evidence has been collected to answer the question thoroughly, or budget is 0, choose action 'finish'.
+4. Include suggested_action_title and suggested_action_body if an action proposal is relevant.
+
+Respond ONLY with a JSON object matching this schema:
+{{
+  "action": "call_tool" | "finish",
+  "tool_call": {{
+    "tool_name": "<name from available tools>",
+    "arguments": {{ ... }},
+    "reasoning": "<concise explanation for selecting this tool>"
+  }} | null,
+  "finish_summary": "<concise summary of findings>" | null,
+  "suggested_action_title": "<action title>" | null,
+  "suggested_action_body": "<action markdown body>" | null
+}}
+"""
+        try:
+            from google.genai import types
+
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
+            raw_text = response.text or "{}"
+            parsed = json.loads(raw_text)
+            return LLMDecision.model_validate(parsed)
+        except Exception as e:
+            logger.warning("Gemini model call failed or returned invalid output: %s. Concluding step.", e)
+            return LLMDecision(
+                action="finish",
+                finish_summary=f"Investigation concluded (Gemini provider notice: {e}).",
+            )
+
+
 def get_llm_provider() -> BaseLLMProvider:
     """Returns the configured LLM provider according to environment settings."""
     provider_type = settings.LLM_PROVIDER.lower().strip()
 
-    if provider_type == "ollama":
+    if provider_type == "gemini":
+        gemini = GeminiProvider()
+        if gemini.is_available:
+            return gemini
+        return NoneLLMProvider()
+    elif provider_type == "ollama":
         return OllamaProvider()
     elif provider_type == "fake":
         return FakeLLMProvider()
     elif provider_type == "none":
-        # Check if Ollama is accessible locally
         return NoneLLMProvider()
     else:
         return NoneLLMProvider()

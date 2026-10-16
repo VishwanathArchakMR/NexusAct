@@ -29,6 +29,11 @@ class ExecuteActionRequest(BaseModel):
     graph_name: Optional[str] = None
 
 
+class SaveInternalActionRequest(BaseModel):
+    action_id: str = Field(..., description="Action ID to save internally")
+    graph_name: Optional[str] = None
+
+
 @router.post("/propose", response_model=IssueProposal)
 def propose_action(payload: ProposeActionRequest) -> IssueProposal:
     """Creates a proposed GitHub action and calculates its canonical approval hash."""
@@ -42,6 +47,20 @@ def propose_action(payload: ProposeActionRequest) -> IssueProposal:
         return proposal
     except Exception as e:
         logger.error("Failed to propose action: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/save-internal", response_model=IssueProposal)
+def save_internal_action(payload: SaveInternalActionRequest) -> IssueProposal:
+    """Saves a proposed action as a persistent internal follow-up task in FalkorDB."""
+    try:
+        saved = github_action_service.save_internal_proposal(
+            action_id=payload.action_id,
+            graph_name=payload.graph_name,
+        )
+        return saved
+    except Exception as e:
+        logger.error("Failed to save internal action: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

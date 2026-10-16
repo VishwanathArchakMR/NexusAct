@@ -129,7 +129,11 @@ async def test_question_dependent_tool_selection():
         graph_name="test_graph_p12_main",
     )
     tools_sec = [s.tool_name for s in sec_report.steps]
-    assert "nexusact_simulate_remove_module" in tools_sec or "nexusact_trace_impact" in tools_sec
+    assert (
+        "nexusact_security_triage" in tools_sec
+        or "nexusact_simulate_remove_module" in tools_sec
+        or "nexusact_trace_impact" in tools_sec
+    )
     assert sec_report.action_proposal is not None
     assert "Security Triage" in sec_report.action_proposal["title"]
 

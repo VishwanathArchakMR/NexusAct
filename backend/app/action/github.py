@@ -29,6 +29,7 @@ logger = logging.getLogger("nexusact.action.github")
 
 class ActionState(str, Enum):
     PROPOSED = "PROPOSED"
+    SAVED = "SAVED"
     APPROVED = "APPROVED"
     SUBMITTING = "SUBMITTING"
     VERIFIED = "VERIFIED"
@@ -127,6 +128,38 @@ class GitHubActionService:
         # Persist Action node in FalkorDB
         target_graph = graph_name or self.client.primary_graph_name
         self._persist_proposal(proposal, target_graph)
+
+        return proposal
+
+    def save_internal_proposal(self, action_id: str, graph_name: Optional[str] = None) -> IssueProposal:
+        """Transitions proposal to SAVED state and persists internal follow-up task in FalkorDB."""
+        target_graph = graph_name or self.client.primary_graph_name
+        proposal = self._proposals.get(action_id) or self._load_proposal(action_id, target_graph)
+        if not proposal:
+            raise ValueError(f"Action proposal '{action_id}' not found.")
+
+        proposal.state = ActionState.SAVED
+        proposal.reason = "Saved as internal task in FalkorDB. External GitHub write bypassed."
+        self._proposals[action_id] = proposal
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            self.client.query(
+                """
+                MERGE (a:Action {id: $action_id})
+                SET a.state = $state,
+                    a.saved_at = $saved_at,
+                    a.is_internal_task = true
+                """,
+                params={
+                    "action_id": action_id,
+                    "state": ActionState.SAVED.value,
+                    "saved_at": now_iso,
+                },
+                graph_name=target_graph,
+            )
+        except Exception as e:
+            logger.warning("Failed to persist SAVED state in FalkorDB: %s", e)
 
         return proposal
 

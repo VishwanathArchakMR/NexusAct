@@ -137,7 +137,7 @@ export interface IssueProposal {
   title: string;
   body: string;
   payload_hash: string;
-  state: "PROPOSED" | "APPROVED" | "SUBMITTING" | "VERIFIED" | "FAILED" | "UNKNOWN";
+  state: "PROPOSED" | "SAVED" | "APPROVED" | "SUBMITTING" | "VERIFIED" | "FAILED" | "UNKNOWN";
   can_execute: boolean;
   reason?: string | null;
   created_at: string;
@@ -145,7 +145,7 @@ export interface IssueProposal {
 
 export interface ActionExecutionResult {
   action_id: string;
-  state: "PROPOSED" | "APPROVED" | "SUBMITTING" | "VERIFIED" | "FAILED" | "UNKNOWN";
+  state: "PROPOSED" | "SAVED" | "APPROVED" | "SUBMITTING" | "VERIFIED" | "FAILED" | "UNKNOWN";
   external_issue_id?: number | null;
   external_issue_url?: string | null;
   read_back_verified: boolean;

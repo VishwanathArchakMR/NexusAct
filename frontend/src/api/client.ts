@@ -235,6 +235,16 @@ export async function executeAction(actionId: string, approvedPayloadHash: strin
   return handleResponse<ActionExecutionResult>(res, "Failed to execute action");
 }
 
+export async function saveInternalAction(actionId: string): Promise<IssueProposal> {
+  const url = `${config.apiBaseUrl}/api/v1/action/save-internal`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: actionId }),
+  });
+  return handleResponse<IssueProposal>(res, "Failed to save internal action");
+}
+
 // Universal Discovery Endpoints (Phase 7 GAF)
 export async function fetchPublicSources(): Promise<{
   sources: Record<string, import("../types/discovery").SourceConnectorInfo>;

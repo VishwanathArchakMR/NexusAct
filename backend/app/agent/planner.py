@@ -23,6 +23,7 @@ from backend.app.evidence.verifier import PathVerificationResult, PathVerifier
 from backend.app.graph.client import FalkorDBClient, graph_client
 from backend.app.graph.schema import LABEL_MODULE
 from backend.app.graph.tools.centrality import PageRankOutput
+from backend.app.graph.tools.fraud import FraudInvestigationOutput
 from backend.app.graph.tools.impact import (
     TraceImpactOutput,
     resolve_module_id,
@@ -34,6 +35,7 @@ from backend.app.graph.tools.resolve import (
     execute_resolve_entity,
 )
 from backend.app.graph.tools.reviewers import WhoKnowsOutput
+from backend.app.graph.tools.security_triage import SecurityTriageOutput
 from backend.app.graph.tools.shortest_path import ShortestPathOutput
 from backend.app.graph.tools.simulation import SimulationResult
 from backend.app.sources.models import SourceMetadataOutput
@@ -69,6 +71,8 @@ class InvestigationReport(BaseModel):
     neighborhood_result: Optional[GraphNeighborhoodOutput] = None
     shortest_path_result: Optional[ShortestPathOutput] = None
     source_metadata_result: Optional[SourceMetadataOutput] = None
+    security_triage_result: Optional[SecurityTriageOutput] = None
+    fraud_result: Optional[FraudInvestigationOutput] = None
     action_proposal: Optional[Dict[str, Any]] = None
     ambiguity_candidates: Optional[List[Dict[str, Any]]] = None
     repository_id: Optional[str] = None
@@ -107,21 +111,44 @@ class AdaptiveInvestigationAgent:
         """Executes the full adaptive investigation workflow with multi-repository and NL target resolution."""
         target_graph = graph_name
         resolved_repo_id = repo_id
-        if not target_graph and repo_id:
-            repo_rec = repo_registry.get_repository(repo_id)
-            if repo_rec:
-                target_graph = repo_rec.graph_name
-        if not target_graph:
-            target_graph = self.client.primary_graph_name
+        commit_sha: str = ""
 
         provider = custom_provider or self.llm
         is_heuristic = not provider.is_available
 
-        commit_sha: str = ""
-        if resolved_repo_id:
-            repo_rec = repo_registry.get_repository(resolved_repo_id)
+        if repo_id:
+            repo_rec = repo_registry.get_repository(repo_id)
             if repo_rec:
+                target_graph = repo_rec.graph_name
                 commit_sha = repo_rec.commit_sha or ""
+            elif not graph_name:
+                # Specified repo_id does not exist in registry; return UNRESOLVED without cross-graph leakage
+                inv_id = f"inv_{uuid.uuid4().hex[:8]}"
+                return InvestigationReport(
+                    investigation_id=inv_id,
+                    question=question,
+                    target_module_id=module_identifier or "",
+                    target_module_name=module_identifier or "Unknown",
+                    status="UNRESOLVED",
+                    summary=(
+                        f"Repository '{repo_id}' is not registered. "
+                        "Cannot execute investigation across an unvalidated graph context."
+                    ),
+                    unresolved_reason=(
+                        f"Repository '{repo_id}' is not registered in repository registry. "
+                        "Cross-graph execution refused."
+                    ),
+                    repository_id=repo_id,
+                    graph_name="",
+                    commit_sha="",
+                    is_heuristic_fallback=is_heuristic,
+                    steps=[],
+                    budget_used=0,
+                    budget_remaining=self.max_tool_budget,
+                )
+
+        if not target_graph:
+            target_graph = self.client.primary_graph_name
 
         # 1. Target Resolution
         resolved_id: Optional[str] = None
@@ -198,11 +225,29 @@ class AdaptiveInvestigationAgent:
                     is_heuristic_fallback=is_heuristic,
                 )
             else:
-                # Check for repository-wide or metadata question
+                # Check for repository-wide, security, or domain (e.g. fraud) question
                 q_lower = question.lower()
                 is_repo_wide = any(
                     w in q_lower
-                    for w in ["central", "pagerank", "important", "source", "metadata", "provenance", "repository"]
+                    for w in [
+                        "central",
+                        "pagerank",
+                        "important",
+                        "source",
+                        "metadata",
+                        "provenance",
+                        "repository",
+                        "fraud",
+                        "transfer",
+                        "suspicious",
+                        "transaction",
+                        "vulnerability",
+                        "security",
+                        "triage",
+                        "cve",
+                        "osv",
+                        "dependency",
+                    ]
                 )
                 if not is_repo_wide:
                     inv_id = f"inv_{uuid.uuid4().hex[:8]}"
@@ -264,6 +309,8 @@ class AdaptiveInvestigationAgent:
         neighborhood_data: Optional[GraphNeighborhoodOutput] = None
         shortest_path_data: Optional[ShortestPathOutput] = None
         source_metadata_data: Optional[SourceMetadataOutput] = None
+        security_triage_data: Optional[SecurityTriageOutput] = None
+        fraud_data: Optional[FraudInvestigationOutput] = None
         action_proposal: Optional[Dict[str, Any]] = None
         final_summary: str = ""
 
@@ -380,6 +427,18 @@ class AdaptiveInvestigationAgent:
                 elif tool_name == "nexusact_resolve_entity":
                     res_out = EntityResolutionOutput.model_validate(parsed_res)
                     summary_snippet = f"Entity resolution: {res_out.confidence} match for '{res_out.query}'."
+                elif tool_name == "nexusact_security_triage":
+                    security_triage_data = SecurityTriageOutput.model_validate(parsed_res)
+                    summary_snippet = (
+                        f"Security triage: {security_triage_data.total_vulnerabilities_count} vulnerabilities "
+                        f"across {security_triage_data.dependencies_analyzed_count} dependencies."
+                    )
+                elif tool_name == "nexusact_investigate_fraud":
+                    fraud_data = FraudInvestigationOutput.model_validate(parsed_res)
+                    summary_snippet = (
+                        f"Synthetic fraud demo: {len(fraud_data.patterns_detected)} patterns detected, "
+                        f"risk indicator={fraud_data.risk_indicator}."
+                    )
 
             except Exception as e:
                 step_status = "FAILED"
@@ -433,6 +492,8 @@ class AdaptiveInvestigationAgent:
                 simulation=simulation_data,
                 verification=verification_result,
                 question=question,
+                security_triage=security_triage_data,
+                fraud=fraud_data,
             )
 
         if not final_summary:
@@ -442,6 +503,8 @@ class AdaptiveInvestigationAgent:
                 reviewers=reviewer_data,
                 simulation=simulation_data,
                 verification=verification_result,
+                security_triage=security_triage_data,
+                fraud=fraud_data,
             )
 
         # Update Investigation record in FalkorDB
@@ -468,6 +531,8 @@ class AdaptiveInvestigationAgent:
             neighborhood_result=neighborhood_data,
             shortest_path_result=shortest_path_data,
             source_metadata_result=source_metadata_data,
+            security_triage_result=security_triage_data,
+            fraud_result=fraud_data,
             action_proposal=action_proposal,
             repository_id=resolved_repo_id,
             graph_name=target_graph,
@@ -488,6 +553,51 @@ class AdaptiveInvestigationAgent:
         """Determines the next logical tool in an evidence chain when no LLM is available."""
         called_tools = {s.tool_name for s in steps}
         q_lower = question.lower()
+
+        # Security triage investigation
+        if (
+            any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise", "advisory", "audit"])
+            and "nexusact_security_triage" not in called_tools
+        ):
+            return LLMDecision(
+                action="call_tool",
+                tool_call=LLMToolCall(
+                    tool_name="nexusact_security_triage",
+                    arguments={"repository_id": repo_id or "repo:local_nexusact"},
+                    reasoning="Triage declared repository dependencies against public OSV vulnerability records.",
+                ),
+            )
+        if "nexusact_security_triage" in called_tools and any(
+            w in q_lower for w in ["security", "vulnerability", "cve", "triage"]
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Security vulnerability triage and component impact analysis completed.",
+            )
+
+        # Synthetic fraud investigation
+        if (
+            any(w in q_lower for w in ["fraud", "suspicious", "transfer", "cycle", "laundering", "ring"])
+            and "nexusact_investigate_fraud" not in called_tools
+        ):
+            return LLMDecision(
+                action="call_tool",
+                tool_call=LLMToolCall(
+                    tool_name="nexusact_investigate_fraud",
+                    arguments={"question": question},
+                    reasoning=(
+                        "Investigate multi-hop transfer cycles and shared device "
+                        "clusters in synthetic fraud demonstration graph."
+                    ),
+                ),
+            )
+        if "nexusact_investigate_fraud" in called_tools and any(
+            w in q_lower for w in ["fraud", "suspicious", "transfer"]
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Synthetic fraud pattern investigation and control audit completed.",
+            )
 
         # If repo-wide / no target ID
         if not target_id:
@@ -715,12 +825,86 @@ class AdaptiveInvestigationAgent:
         simulation: Optional[SimulationResult],
         verification: Optional[PathVerificationResult],
         question: str = "",
+        security_triage: Optional[SecurityTriageOutput] = None,
+        fraud: Optional[FraudInvestigationOutput] = None,
     ) -> Dict[str, Any]:
         """Constructs an action proposal strictly derived from verified graph findings."""
+        if security_triage:
+            title = (
+                f"[NexusAct Security Triage] Remediate {security_triage.total_vulnerabilities_count} "
+                f"public vulnerabilities in {security_triage.repository_id}"
+            )
+            body_lines = [
+                f"## NexusAct Security Triage Report ({security_triage.repository_id})",
+                "",
+                f"**Graph Context:** `{security_triage.graph_name}`",
+                f"**Manifests Inspected:** {', '.join(security_triage.manifests_inspected) or 'Standard manifests'}",
+                f"**Dependencies Scanned:** {security_triage.dependencies_analyzed_count}",
+                (
+                    f"**Advisories Identified:** {security_triage.total_vulnerabilities_count} "
+                    f"(Critical: {security_triage.critical_count}, High: {security_triage.high_count})"
+                ),
+                "",
+                "### Remediation Action Plan",
+                security_triage.remediation_proposal,
+                "",
+                "### Public Vulnerability Evidence (OSV-Backed)",
+            ]
+            for v in security_triage.vulnerabilities_found[:5]:
+                fix_str = v.fixed_version or "N/A"
+                pkg_info = f"`{v.package_name}@{v.package_version}`"
+                body_lines.append(f"- **{v.vuln_id}** ({pkg_info}, Severity: {v.severity}) — Fixed in: `{fix_str}`")
+                body_lines.append(f"  - Advisory Source: {v.source_url}")
+                if v.affected_modules:
+                    body_lines.append(f"  - Consumed by internal modules: {', '.join(v.affected_modules)}")
+            body_lines.extend(
+                [
+                    "",
+                    "---",
+                    "*Action proposal generated from public OSV vulnerability records in FalkorDB.*",
+                ]
+            )
+            return {"title": title, "body": "\n".join(body_lines)}
+
+        if fraud:
+            title = f"[NexusAct Fraud Review] Synthetic Multi-Hop Transfer Audit ({fraud.graph_name})"
+            body_lines = [
+                "## NexusAct Synthetic Fraud Demonstration Review",
+                f"> **Synthetic Disclaimer:** {fraud.synthetic_disclaimer}",
+                "",
+                f"**Graph Context:** `{fraud.graph_name}`",
+                f"**Risk Indicator:** `{fraud.risk_indicator}`",
+                f"**Suspicious Flow Volume:** ${fraud.total_suspicious_volume_usd:,.2f}",
+                "",
+                "### Detected Topology Patterns",
+            ]
+            for p in fraud.patterns_detected:
+                body_lines.append(f"- **{p.pattern_type}** ({p.severity}): {p.description}")
+                body_lines.append(f"  - Criteria: {p.evidence_criteria}")
+                if p.multi_hop_path:
+                    body_lines.append(f"  - Multi-Hop Chain: {' -> '.join(p.multi_hop_path)}")
+            body_lines.extend(
+                [
+                    "",
+                    "### Benign Control Verification",
+                ]
+            )
+            for ctrl in fraud.benign_controls:
+                body_lines.append(f"- **{ctrl.account_id}**: {ctrl.reason}")
+            body_lines.extend(
+                [
+                    "",
+                    "### Recommended Case Action",
+                    fraud.recommended_action,
+                    "",
+                    "---",
+                    "*Action proposal recorded in FalkorDB for demonstration case review.*",
+                ]
+            )
+            return {"title": title, "body": "\n".join(body_lines)}
+
         q_lower = question.lower()
-        if any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise"]):
-            title = f"[NexusAct Security Triage] Remediation & blast radius for {target_name}"
-        elif any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"]) and not any(
+        if any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"]) and not any(
             w in q_lower for w in ["break", "impact", "refactor", "risk"]
         ):
             title = f"[NexusAct Code Ownership] Designate experienced code reviewers for {target_name}"
@@ -773,8 +957,8 @@ class AdaptiveInvestigationAgent:
                     "### Recommended Reviewers (Evidence-Derived)",
                 ]
             )
-            for c in reviewers.candidates[:3]:
-                body_lines.append(f"- **{c.name}** (Score: {c.composite_score:.2f}) — {c.rationale}")
+            for cand in reviewers.candidates[:3]:
+                body_lines.append(f"- **{cand.name}** (Score: {cand.composite_score:.2f}) — {cand.rationale}")
 
         body_lines.extend(
             [
@@ -796,21 +980,37 @@ class AdaptiveInvestigationAgent:
         reviewers: Optional[WhoKnowsOutput],
         simulation: Optional[SimulationResult],
         verification: Optional[PathVerificationResult],
+        security_triage: Optional[SecurityTriageOutput] = None,
+        fraud: Optional[FraudInvestigationOutput] = None,
     ) -> str:
         """Synthesizes a human-readable summary of the evidence collected."""
-        parts = [f"Investigation of module '{target_name}':"]
-        if impact:
-            parts.append(f"Identified {impact.total_impacted_count} upstream dependent modules within 4 hops.")
-        if simulation:
+        parts = []
+        if security_triage:
             parts.append(
-                f"Simulated module removal indicated {simulation.disappeared_paths_count} broken dependency paths "
-                f"with a blast radius of {simulation.blast_radius_score:.2f}."
+                f"Security triage inspected dependencies in '{security_triage.repository_id}' and found "
+                f"{security_triage.total_vulnerabilities_count} public vulnerability advisories "
+                f"across {security_triage.dependencies_analyzed_count} packages."
             )
-        if reviewers and reviewers.candidates:
-            names = ", ".join([c.name for c in reviewers.candidates[:2]])
-            parts.append(f"Primary suggested reviewers with relevant commit history: {names}.")
-        if verification:
-            parts.append(f"Graph topology verification status: {verification.status.value}.")
+        if fraud:
+            parts.append(
+                f"Synthetic fraud traversal in '{fraud.graph_name}' detected {len(fraud.patterns_detected)} "
+                f"suspicious pattern(s) with ${fraud.total_suspicious_volume_usd:,.2f} total flow, "
+                f"while confirming benign controls."
+            )
+        if not security_triage and not fraud:
+            parts.append(f"Investigation of module '{target_name}':")
+            if impact:
+                parts.append(f"Identified {impact.total_impacted_count} upstream dependent modules within 4 hops.")
+            if simulation:
+                parts.append(
+                    f"Simulated module removal indicated {simulation.disappeared_paths_count} broken dependency paths "
+                    f"with a blast radius of {simulation.blast_radius_score:.2f}."
+                )
+            if reviewers and reviewers.candidates:
+                names = ", ".join([c.name for c in reviewers.candidates[:2]])
+                parts.append(f"Primary suggested reviewers with relevant commit history: {names}.")
+            if verification:
+                parts.append(f"Graph topology verification status: {verification.status.value}.")
 
         return " ".join(parts)
 

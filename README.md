@@ -10,13 +10,14 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-101%2F101%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-109%2F109%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
+> **Phase 13 Completion Report:** [`docs/PHASE13_COMPLETION_REPORT.md`](docs/PHASE13_COMPLETION_REPORT.md)  
 > **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md)  
 
 ---
@@ -28,11 +29,10 @@
 Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across three first-class input modes:
 1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, interactive SVG graph explorer, and cryptographically verified GitHub action proposals.
 2. **Universal Public-Data Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
-3. **Input-Driven Universal GAF:**
-   - **Mode A (Public Knowledge):** User question queries approved public connectors and returns query-scoped evidence graphs.
-   - **Mode B (Selected Repository):** Route queries directly to isolated repository graphs with AST modules and `DEPENDS_ON` edges.
-   - **Mode C (Combined):** Cross-domain dual-source investigation with separate provenance and evidence-backed joins.
-   - Primary navigation order: **Software Graph** (default opening workspace) &rarr; **Universal GAF** &rarr; **Diagnostics**.
+3. **Public Vulnerability Security Triage (Phase 13):** Dynamic dependency analysis against OSV (Open Source Vulnerabilities) public database. Maps declared manifests (`package.json`, `package-lock.json`, `requirements.txt`) to `PackageDependency` and `Vulnerability` nodes in FalkorDB, tracing paths to consuming internal modules.
+4. **Bounded Synthetic Fraud Investigation (Phase 13):** Multi-hop graph traversal over isolated `nexusact_fraud_demo` graph detecting rapid circular transfer rings (`acc:101 -> acc:102 -> acc:103 -> acc:101`), shared device infrastructure (`dev:iphone_xyz`), and verified benign control baselines.
+5. **Google Gemini LLM Planning Adapter (Phase 13):** Server-side function-calling and structured tool budget execution using official `google-genai` SDK (`gemini-2.5-flash`). Enforces tool allowlist and deterministic fallback.
+6. **Safe Internal Action Persistence (Phase 13):** Safe `SAVED` state in FalkorDB when GitHub credentials are unset, preventing unauthenticated remote execution.
 
 ---
 
@@ -45,8 +45,11 @@ graph TD
     API -->|Repo Investigation| Agent["Adaptive Agent Loop (Planner)"]
     API -->|Universal Ask GAF| Discovery["Universal Discovery Planner"]
     
+    Agent -->|Gemini API / Fallback| LLM["Google Gemini Planner / Heuristic"]
     Agent -->|List / Call Tools| MCP["Model Context Protocol Server (mcp v2.3.0)"]
-    MCP -->|trace_impact / who_knows / simulate| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    MCP -->|trace_impact / security_triage / fraud / simulate| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    
+    MCP -->|Vulnerability Query| OSV["OSV Public Vulnerability API"]
     
     Discovery -->|Bounded Search| HF["Hugging Face Hub API"]
     Discovery -->|Scholarly Works| OA["OpenAlex API"]
@@ -58,7 +61,7 @@ graph TD
     
     FalkorDB -->|Nodes & Edges| Verifier["PathVerifier (7-point check)"]
     Verifier -->|VERIFIED / SUPPORTED| Action["GitHub Action Service"]
-    Action -->|Hash Approval & Readback| GitHub[("GitHub API (Sandboxed)")]
+    Action -->|Hash Approval & Readback| GitHub[("GitHub API (Sandboxed) / FalkorDB Saved Task")]
 ```
 
 ### Graph Model & Domain Separation
@@ -66,7 +69,11 @@ graph TD
 NexusAct maintains strict physical and logical graph isolation in FalkorDB:
 - **Software Codebase Graphs (`nexusact_main`, `repo_*`):**
   - **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
-  - **Schema:** `Module`, `File`, `Person`, `Commit`.
+  - **Schema:** `Module`, `File`, `Person`, `Commit`, `PackageDependency`, `Vulnerability`, `SecurityFinding`.
+- **Synthetic Fraud Graph (`nexusact_fraud_demo`):**
+  - Dedicated isolated demonstration namespace for multi-hop financial topology analysis.
+  - **Schema:** `Account`, `Person`, `Device`, `IPAddress`, `Merchant`, `Transaction`.
+  - **Relationships:** `OWNS`, `USES_DEVICE`, `USES_IP`, `SENDS_TO`, `PAYS`.
 - **Public Knowledge Graphs (`nexusact_public`):**
   - Independent discovery space for AI models, datasets, papers, authors, and organizations.
   - **Schema:** `Model`, `Dataset`, `Paper`, `Organization`, `Topic`, `SourceRecord`, `Investigation`.

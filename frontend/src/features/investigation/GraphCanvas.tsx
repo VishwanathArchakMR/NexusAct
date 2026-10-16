@@ -15,7 +15,7 @@
  *   - Light & Dark theme support with contrast-aware tokens.
  */
 
-import React, { useState, useMemo, useRef, useCallback } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import type { SubgraphResponse, GraphNode, GraphEdge } from "../../types/investigation";
 import {
   Layers,
@@ -84,6 +84,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>("ALL");
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const [prevTarget, setPrevTarget] = useState<string | undefined>(targetNodeId);
   if (targetNodeId !== prevTarget) {
@@ -378,12 +379,20 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
   const handleMouseUp = () => setIsPanning(false);
 
-  // Smooth wheel zoom
-  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    setZoom((prev) => Math.min(2.5, Math.max(0.35, prev * factor)));
-  };
+  // Smooth non-passive wheel zoom
+  useEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const handleNativeWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      setZoom((prev) => Math.min(2.5, Math.max(0.35, prev * factor)));
+    };
+    svgEl.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => {
+      svgEl.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, [data]);
 
   const handleZoomIn = () => setZoom((z) => Math.min(2.5, z * 1.2));
   const handleZoomOut = () => setZoom((z) => Math.max(0.35, z / 1.2));
@@ -670,7 +679,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           }}
         >
           <Compass size={14} color="var(--accent-blue)" />
-          <strong style={{ color: "var(--accent-blue)" }}>Verified Multi-Hop Path ({highlightPathNodes.length - 1} hops):</strong>
+          {(() => {
+            const hopCount = highlightPathNodes.length - 1;
+            const hopLabel =
+              hopCount <= 0
+                ? "No path established"
+                : hopCount === 1
+                ? "Direct Relationship (1-hop path)"
+                : `Verified Multi-Hop Path (${hopCount} hops)`;
+            return <strong style={{ color: "var(--accent-blue)" }}>{hopLabel}:</strong>;
+          })()}
           <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
             {highlightPathNodes.map((pNode, idx) => (
               <React.Fragment key={pNode}>
@@ -714,6 +732,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         }}
       >
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
           style={{
             width: "100%",
@@ -725,7 +744,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
         >
           <defs>
             {/* Arrowhead Markers */}

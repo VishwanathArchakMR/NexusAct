@@ -1057,7 +1057,11 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                   flexWrap: "wrap",
                 }}
               >
-                <strong style={{ color: "var(--accent-blue)" }}>Multi-Hop Graph Path ({activePathNodes.length - 1} hops):</strong>
+                <strong style={{ color: "var(--accent-blue)" }}>
+                  {activePathNodes.length - 1 === 1
+                    ? "Direct Relationship (1-hop path):"
+                    : `Multi-Hop Graph Path (${activePathNodes.length - 1} hops):`}
+                </strong>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", flexWrap: "wrap" }}>
                   {activePathNodes.map((pNode, idx) => (
                     <React.Fragment key={pNode}>
@@ -1284,65 +1288,213 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
 
       {activeTab === "neighborhood" && (
         <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--text-primary)" }}>
-            1-Hop Neighborhood & Directed Connections
-          </h3>
-          {report?.neighborhood_result ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-              <div style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.75rem" }}>
-                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent-blue)", marginBottom: "0.5rem" }}>
-                  Incoming Dependents ({report.neighborhood_result.incoming_dependents.length})
-                </h4>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem" }}>
-                  {report.neighborhood_result.incoming_dependents.map((n) => (
-                    <li key={n.id} style={{ padding: "0.25rem 0", borderBottom: "1px solid var(--border-subtle)" }}>
-                      <strong>{n.name}</strong>
-                      {n.source_file && <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>({n.source_file})</span>}
-                    </li>
-                  ))}
-                  {report.neighborhood_result.incoming_dependents.length === 0 && (
-                    <li style={{ color: "var(--text-muted)" }}>No incoming dependent modules.</li>
-                  )}
-                </ul>
-              </div>
-
-              <div style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.75rem" }}>
-                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent-blue)", marginBottom: "0.5rem" }}>
-                  Outgoing Dependencies ({report.neighborhood_result.outgoing_dependencies.length})
-                </h4>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem" }}>
-                  {report.neighborhood_result.outgoing_dependencies.map((n) => (
-                    <li key={n.id} style={{ padding: "0.25rem 0", borderBottom: "1px solid var(--border-subtle)" }}>
-                      <strong>{n.name}</strong>
-                    </li>
-                  ))}
-                  {report.neighborhood_result.outgoing_dependencies.length === 0 && (
-                    <li style={{ color: "var(--text-muted)" }}>No outgoing dependency modules.</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          ) : report?.shortest_path_result ? (
-            <div style={{ padding: "0.75rem", backgroundColor: "var(--bg-muted)", borderRadius: "6px" }}>
-              <p style={{ fontWeight: 600, fontSize: "0.85rem" }}>
-                {report.shortest_path_result.explanation}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                Neighborhood & Directed Paths
+              </h3>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                Topological path verification and 1-hop caller/callee connections in FalkorDB graph.
               </p>
-              <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                {report.shortest_path_result.path_nodes.map((node, i) => (
+            </div>
+            {activePathNodes.length >= 2 && (
+              <span
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  backgroundColor: "var(--accent-blue-subtle)",
+                  color: "var(--accent-blue)",
+                  padding: "0.2rem 0.55rem",
+                  borderRadius: "4px",
+                  border: "1px solid var(--border-focus)",
+                }}
+              >
+                {activePathNodes.length - 1 === 1
+                  ? "Direct Relationship (1-hop path)"
+                  : `Multi-Hop Path (${activePathNodes.length - 1} hops)`}
+              </span>
+            )}
+          </div>
+
+          {/* 1. Verified Path Result (from active investigation, findings, or shortest path) */}
+          {(activePathNodes.length >= 2 || report?.shortest_path_result) && (
+            <div
+              style={{
+                marginBottom: "1.25rem",
+                padding: "0.85rem 1rem",
+                backgroundColor: "var(--bg-muted)",
+                borderRadius: "6px",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem" }}>
+                <Compass size={14} color="var(--accent-blue)" />
+                <strong style={{ fontSize: "0.8rem", color: "var(--text-primary)" }}>
+                  Verified Graph Path Chain:
+                </strong>
+              </div>
+              {report?.shortest_path_result?.explanation && (
+                <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginBottom: "0.6rem" }}>
+                  {report.shortest_path_result.explanation}
+                </p>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                {(report?.shortest_path_result?.path_nodes || activePathNodes).map((node, i, arr) => (
                   <React.Fragment key={node}>
-                    <span style={{ padding: "0.2rem 0.5rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
-                      {node}
-                    </span>
-                    {i < report.shortest_path_result!.path_nodes.length - 1 && <span>→</span>}
+                    <button
+                      onClick={() => setSelectedModule(node.replace(/^mod:/, ""))}
+                      style={{
+                        padding: "0.25rem 0.55rem",
+                        borderRadius: "4px",
+                        backgroundColor: i === 0 ? "var(--bg-card)" : i === arr.length - 1 ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                        border: i === 0 || i === arr.length - 1 ? "1px solid var(--accent-blue)" : "1px solid var(--border-subtle)",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.76rem",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                      }}
+                      title={i === 0 ? "Path Source" : i === arr.length - 1 ? "Path Target" : `Intermediate Node (Hop ${i})`}
+                    >
+                      {node.replace(/^mod:/, "")}
+                      {i === 0 && <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginLeft: "0.3rem" }}>(source)</span>}
+                      {i === arr.length - 1 && <span style={{ fontSize: "0.68rem", color: "var(--accent-blue)", marginLeft: "0.3rem" }}>(target)</span>}
+                      {i > 0 && i < arr.length - 1 && <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginLeft: "0.3rem" }}>(hop {i})</span>}
+                    </button>
+                    {i < arr.length - 1 && (
+                      <span style={{ color: "var(--accent-blue)", fontWeight: 700, fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                          DEPENDS_ON
+                        </span>
+                        →
+                      </span>
+                    )}
                   </React.Fragment>
                 ))}
               </div>
             </div>
-          ) : (
-            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-              Run an investigation mentioning neighborhood or shortest path between modules to view structured topological connections.
-            </p>
           )}
+
+          {/* 2. 1-Hop Neighborhood Connections */}
+          {(() => {
+            const targetIdClean = (selectedModule || report?.target_module_name || "").trim().replace(/^mod:/, "");
+            const hasExplicitNeighborhood = Boolean(report?.neighborhood_result);
+
+            const incoming = hasExplicitNeighborhood
+              ? report!.neighborhood_result!.incoming_dependents.map((n) => ({
+                  id: n.id,
+                  name: n.name,
+                  detail: n.source_file || "",
+                }))
+              : (subgraph?.edges || [])
+                  .filter((e) => {
+                    const tgt = e.target.replace(/^mod:/, "");
+                    return tgt === targetIdClean;
+                  })
+                  .map((e) => ({
+                    id: e.source,
+                    name: e.source.replace(/^mod:/, ""),
+                    detail: e.label || "DEPENDS_ON",
+                  }));
+
+            const outgoing = hasExplicitNeighborhood
+              ? report!.neighborhood_result!.outgoing_dependencies.map((n) => ({
+                  id: n.id,
+                  name: n.name,
+                  detail: "",
+                }))
+              : (subgraph?.edges || [])
+                  .filter((e) => {
+                    const src = e.source.replace(/^mod:/, "");
+                    return src === targetIdClean;
+                  })
+                  .map((e) => ({
+                    id: e.target,
+                    name: e.target.replace(/^mod:/, ""),
+                    detail: e.label || "DEPENDS_ON",
+                  }));
+
+            const hasAnyConnections = incoming.length > 0 || outgoing.length > 0;
+
+            if (!hasAnyConnections && activePathNodes.length < 2 && !report?.shortest_path_result) {
+              return (
+                <div style={{ textAlign: "center", padding: "1.5rem", color: "var(--text-muted)" }}>
+                  <p style={{ fontSize: "0.82rem", margin: 0 }}>
+                    No path or neighborhood connections were found for '{selectedModule || "target"}' in the active graph.
+                  </p>
+                  <p style={{ fontSize: "0.75rem", marginTop: "0.3rem" }}>
+                    Run an investigation or select a module connected to other components in the repository.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.75rem", backgroundColor: "var(--bg-card)" }}>
+                  <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent-blue)", marginBottom: "0.5rem" }}>
+                    Incoming Dependents / Callers ({incoming.length})
+                  </h4>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem" }}>
+                    {incoming.map((n) => (
+                      <li key={n.id} style={{ padding: "0.3rem 0", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <button
+                          onClick={() => setSelectedModule(n.name)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--text-primary)",
+                            fontWeight: 600,
+                            fontFamily: "var(--font-mono)",
+                            cursor: "pointer",
+                            padding: 0,
+                            textAlign: "left",
+                          }}
+                        >
+                          {n.name}
+                        </button>
+                        {n.detail && <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", fontFamily: "var(--font-mono)" }}>{n.detail}</span>}
+                      </li>
+                    ))}
+                    {incoming.length === 0 && (
+                      <li style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No incoming dependent callers.</li>
+                    )}
+                  </ul>
+                </div>
+
+                <div style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.75rem", backgroundColor: "var(--bg-card)" }}>
+                  <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent-blue)", marginBottom: "0.5rem" }}>
+                    Outgoing Dependencies / Callees ({outgoing.length})
+                  </h4>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem" }}>
+                    {outgoing.map((n) => (
+                      <li key={n.id} style={{ padding: "0.3rem 0", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <button
+                          onClick={() => setSelectedModule(n.name)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--text-primary)",
+                            fontWeight: 600,
+                            fontFamily: "var(--font-mono)",
+                            cursor: "pointer",
+                            padding: 0,
+                            textAlign: "left",
+                          }}
+                        >
+                          {n.name}
+                        </button>
+                        {n.detail && <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", fontFamily: "var(--font-mono)" }}>{n.detail}</span>}
+                      </li>
+                    ))}
+                    {outgoing.length === 0 && (
+                      <li style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No outgoing dependency modules.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

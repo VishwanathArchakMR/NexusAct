@@ -150,14 +150,42 @@ curl http://localhost:8000/api/v1/health/readiness
 
 ---
 
-### Scene 10: Security Triage Workflow
+### Scene 10: Security Triage Workflow (OSV-Backed)
 
 1. Submit a security-focused prompt:
-   > *"Security triage: what is the blast radius and remediation owners if backend.app.core.config is compromised?"*
+   > *"Triage the known dependency vulnerability in this repository."*
 2. **What to highlight to the audience:**
-   - Agent dynamically selects security triage tools: `nexusact_simulate_remove_module` &rarr; `nexusact_trace_impact` &rarr; `nexusact_who_knows`.
-   - Action Proposal automatically generates: `[NexusAct Security Triage] Remediation & blast radius for backend.app.core.config`.
-   - Distinguishes structural blast radius from runtime crash assumptions.
+   - Agent dynamically selects MCP tool: `nexusact_security_triage`.
+   - Inspects real project manifests (`package.json`, `package-lock.json`, `requirements.txt`).
+   - Queries OSV vulnerability database via public API to match exact or range package versions.
+   - Stores `PackageDependency` and `Vulnerability` nodes in FalkorDB with explicit `HAS_VULNERABILITY` and `USES_PACKAGE` relationships.
+   - Discloses exact severity, advisory source URLs, fixed versions, and consuming internal application modules.
+   - Proposes version-specific remediation plan: `[NexusAct Security Triage] Dependency Vulnerability Remediation Plan`.
+
+---
+
+### Scene 11: Synthetic Fraud Investigation & Multi-Hop Cycle Analysis
+
+1. In the investigation inquiry bar, type:
+   > *"Investigate suspicious transfers and explain how the accounts are connected in the synthetic fraud graph."*
+2. **What to highlight to the audience:**
+   - **Domain Isolation:** Operates strictly on `nexusact_fraud_demo` graph in FalkorDB, clearly separated from software repositories.
+   - **Synthetic Disclaimer:** Prominently displays: *"This investigation operates strictly on synthetic, deterministic demonstration records..."*
+   - **Multi-Hop Cypher Traversal:** Detects circular money flow across 3 hops: `acc:101 -> acc:102 -> acc:103 -> acc:101` ($27,700.00 volume).
+   - **Shared Infrastructure Fingerprinting:** Detects `acc:101` and `acc:103` operating concurrently through `dev:iphone_xyz` (`USES_DEVICE`).
+   - **Benign Control Auditing:** Verifies linear retail spending for `acc:201` and `acc:202`, confirming benign controls are NOT falsely flagged as fraud.
+
+---
+
+### Scene 12: Gemini LLM Assisted Planning & Safe FalkorDB Internal Persistence
+
+1. **Planner Attribution:**
+   - Shows active planner mode: `Google Gemini (gemini-2.5-flash)` when `GEMINI_API_KEY` is configured, or transparent `Deterministic / Heuristic Fallback` when offline.
+   - Bounded tool budget (maximum 5 tools per investigation) prevents infinite loops.
+2. **Verified Action & Safe FalkorDB Follow-Up:**
+   - If `GITHUB_TOKEN` is unset, external execution is safely locked (`can_execute=false`).
+   - Click **"Save as Internal Follow-Up Task in FalkorDB"**.
+   - Result: Instantly updates action node in FalkorDB with state `SAVED`. The UI renders verified persistence badge: *"Action Persisted Internally (FalkorDB)"*.
 
 ---
 
@@ -171,10 +199,10 @@ Before recording the 3–5 minute hackathon demo video, verify each item:
 - [ ] **Flow Order:**
   1. Quick introduction of NexusAct and the GraphAction Fabric (GAF) architecture (30s).
   2. Software Graph: Ingest or select repository, ask natural-language question, show First-Class Investigation Summary (45s).
-  3. Interactive Graph Explorer: Pan/zoom canvas, click node to open slide-over inspector, show multi-hop path glow, toggle Light/Dark theme (60s).
-  4. Tool Trace & MCP: Show Agent MCP Trace with dynamic tool selection (30s).
-  5. Counterfactual Simulation: Show baseline vs. removed module blast radius (30s).
-  6. Verified Action: Show evidence-grounded issue proposal with SHA-256 hash and safe approval gate (30s).
+  3. Interactive Graph Explorer: Pan/zoom canvas, click node to open slide-over inspector, show multi-hop path glow, toggle Light/Dark theme (45s).
+  4. Real Security Triage: Show OSV dependency vulnerability analysis with fix versions (30s).
+  5. Synthetic Fraud Demo: Show circular transfer ring and shared device cluster in FalkorDB (30s).
+  6. Verified Action: Show evidence-grounded issue proposal and internal FalkorDB task persistence (`SAVED`) (30s).
   7. Universal GAF (Brief): Show public data search connecting papers and models with source URLs (30s).
   8. Conclusion: Reiterate hackathon track and graph-native intelligence (15s).
 - [ ] **No False Claims:** Explicitly note that external GitHub actions require an approved token and are safeguarded by human approval.
@@ -192,4 +220,6 @@ Before recording the 3–5 minute hackathon demo video, verify each item:
 | **Public Source Partial Outage** | Records other sources, isolates failure in `coverage_limitations` | Partial failure tolerance; no cascading crashes |
 | **Restart Recovery** | Graph data in FalkorDB persists across restarts | Persistent relationship engine verification |
 | **Unresolved Target Module** | Returns `UNRESOLVED` with candidate suggestions | Honest truthfulness; no hallucinated graphs |
+| **Missing GitHub Token** | Disables external write; enables internal FalkorDB save | Truthful state; no fake external execution |
+
 

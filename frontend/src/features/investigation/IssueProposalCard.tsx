@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import type { IssueProposal, ActionExecutionResult } from "../../types/investigation";
-import { proposeAction, executeAction } from "../../api/client";
-import { GitPullRequest, ExternalLink, ShieldCheck, AlertCircle, CheckCircle2, Lock } from "lucide-react";
+import { proposeAction, executeAction, saveInternalAction } from "../../api/client";
+import { GitPullRequest, ExternalLink, ShieldCheck, AlertCircle, CheckCircle2, Lock, Database } from "lucide-react";
 
 interface IssueProposalCardProps {
   investigationId: string;
@@ -49,6 +49,20 @@ export const IssueProposalCard: React.FC<IssueProposalCardProps> = ({
       setExecutionResult(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Execution failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveInternal = async () => {
+    if (!proposal) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const saved = await saveInternalAction(proposal.action_id);
+      setProposal(saved);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save internal action");
     } finally {
       setIsLoading(false);
     }
@@ -259,24 +273,67 @@ export const IssueProposalCard: React.FC<IssueProposalCardProps> = ({
                   </a>
                 )}
               </div>
+            ) : proposal.state === "SAVED" ? (
+              <div
+                style={{
+                  padding: "0.75rem",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--status-verified-bg)",
+                  border: "1px solid var(--status-verified-border)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.3rem" }}>
+                  <CheckCircle2 size={16} color="var(--status-verified-text)" />
+                  <strong style={{ fontSize: "0.82rem", color: "var(--status-verified-text)" }}>
+                    Action Persisted Internally (FalkorDB)
+                  </strong>
+                </div>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: 0 }}>
+                  This follow-up action has been safely recorded in FalkorDB (Action ID: <code>{proposal.action_id}</code>). External execution is bypassed to protect remote repositories without credentials.
+                </p>
+              </div>
             ) : (
               <div>
                 {!proposal.can_execute ? (
-                  <div
-                    style={{
-                      padding: "0.5rem 0.75rem",
-                      backgroundColor: "var(--status-unknown-bg)",
-                      border: "1px solid var(--status-unknown-border)",
-                      borderRadius: "4px",
-                      fontSize: "0.75rem",
-                      color: "var(--status-unknown-text)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                    }}
-                  >
-                    <Lock size={14} />
-                    <span>{proposal.reason}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        backgroundColor: "var(--status-unknown-bg)",
+                        border: "1px solid var(--status-unknown-border)",
+                        borderRadius: "4px",
+                        fontSize: "0.75rem",
+                        color: "var(--status-unknown-text)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <Lock size={14} />
+                      <span>{proposal.reason}</span>
+                    </div>
+                    <div>
+                      <button
+                        onClick={handleSaveInternal}
+                        disabled={isLoading}
+                        style={{
+                          backgroundColor: "var(--bg-muted)",
+                          color: "var(--text-primary)",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: "6px",
+                          padding: "0.5rem 1rem",
+                          fontSize: "0.78rem",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.4rem",
+                          cursor: isLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <Database size={14} />
+                        {isLoading ? "Saving in FalkorDB..." : "Save as Internal Follow-Up Task in FalkorDB"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <button

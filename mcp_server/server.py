@@ -231,6 +231,54 @@ def create_mcp_server() -> MCPServer:
             )
         return out.model_dump_json()
 
+    @server.tool(
+        name="nexusact_security_triage",
+        description=(
+            "Performs public OSV vulnerability triage over declared repository dependencies, "
+            "mapping vulnerability advisories and paths to affected application components."
+        ),
+    )
+    async def nexusact_security_triage(
+        repository_id: Optional[str] = None,
+        manifest_path: Optional[str] = None,
+        package_filter: Optional[str] = None,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """OSV dependency vulnerability triage tool."""
+        from backend.app.graph.tools.security_triage import SecurityTriageInput, execute_security_triage
+
+        payload = SecurityTriageInput(
+            repository_id=repository_id,
+            manifest_path=manifest_path,
+            package_filter=package_filter,
+            graph_name=graph_name,
+        )
+        output = await execute_security_triage(payload)
+        return output.model_dump_json()
+
+    @server.tool(
+        name="nexusact_investigate_fraud",
+        description=(
+            "Investigates suspicious transfer cycles and shared device infrastructure "
+            "in the isolated synthetic fraud demonstration graph."
+        ),
+    )
+    def nexusact_investigate_fraud(
+        question: Optional[str] = None,
+        target_account_id: Optional[str] = None,
+        graph_name: Optional[str] = None,
+    ) -> str:
+        """Synthetic fraud pattern detection tool."""
+        from backend.app.graph.tools.fraud import FraudInvestigationInput, execute_investigate_fraud
+
+        payload = FraudInvestigationInput(
+            question=question,
+            target_account_id=target_account_id,
+            graph_name=graph_name,
+        )
+        output = execute_investigate_fraud(payload)
+        return output.model_dump_json()
+
     return server
 
 

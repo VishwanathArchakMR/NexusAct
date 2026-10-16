@@ -156,10 +156,12 @@ def get_graph_subgraph(
         repo_id = None
 
     target_graph = graph_name
-    if not target_graph and repo_id:
+    if repo_id:
         repo_rec = repo_registry.get_repository(repo_id)
         if repo_rec:
             target_graph = repo_rec.graph_name
+        elif not graph_name:
+            return SubgraphResponse(nodes=[], edges=[], total_nodes=0, total_edges=0)
     if not target_graph:
         target_graph = graph_client.primary_graph_name
 
