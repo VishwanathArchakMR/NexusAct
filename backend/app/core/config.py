@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
 
     # FalkorDB Database
     FALKORDB_HOST: str = "127.0.0.1"
