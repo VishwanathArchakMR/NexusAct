@@ -10,8 +10,8 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-74%2F74%20passing-brightgreen)](./tests)
-[![Vitest](https://img.shields.io/badge/vitest-8%2F8%20passing-brightgreen)](./frontend/tests)
+[![Tests](https://img.shields.io/badge/pytest-87%2F87%20passing-brightgreen)](./tests)
+[![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
 
 ---
 

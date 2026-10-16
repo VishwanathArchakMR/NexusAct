@@ -67,6 +67,18 @@ def ask_universal_gaf(req: AskGafRequest) -> UniversalInvestigationResult:
             plan.max_results_per_source = req.max_results
 
         result = planner.execute_investigation(req.question, plan_override=plan)
+        try:
+            persister.save_investigation(
+                investigation_id=result.investigation_id,
+                question=result.question,
+                summary=result.summary,
+                approach=result.approach,
+                sources=result.plan.selected_source_ids,
+                entities=result.entities,
+                next_action=result.next_action,
+            )
+        except Exception as save_exc:
+            logger.warning("Could not persist investigation memory: %s", save_exc)
         return result
     except Exception as exc:
         logger.error("Ask GAF execution failed: %s", exc)
@@ -133,4 +145,28 @@ def get_public_path(
         "target_id": target_id,
         "paths": paths,
         "total_paths": len(paths),
+    }
+
+
+@router.get("/investigations", response_model=dict[str, Any])
+def list_investigations(limit: int = Query(default=10, ge=1, le=50)) -> dict[str, Any]:
+    """Lists saved public investigations from FalkorDB graph memory."""
+    items = persister.list_saved_investigations(limit=limit)
+    return {"investigations": items, "total": len(items)}
+
+
+class ConfirmActionRequest(BaseModel):
+    action_id: str
+
+
+@router.post("/actions/confirm", response_model=dict[str, Any])
+def confirm_action(req: ConfirmActionRequest) -> dict[str, Any]:
+    """Confirms and executes a recommended investigation action in FalkorDB."""
+    ok = persister.confirm_action(req.action_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Action '{req.action_id}' not found.")
+    return {
+        "action_id": req.action_id,
+        "status": "CONFIRMED",
+        "message": "Action confirmed and persisted in graph memory.",
     }

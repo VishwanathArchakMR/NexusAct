@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from backend.app.graph.client import FalkorDBClient, graph_client
@@ -91,9 +92,27 @@ class PublicGraphPersister:
 
                 # 4. Upsert relationships
                 for rel in record.relationships:
-                    # Ensure target exists with at least its ID
-                    self._ensure_stub_node(rel.target_entity_id)
-                    self._ensure_stub_node(rel.source_entity_id)
+                    # Semantic label hints from relationship type
+                    src_hint = None
+                    tgt_hint = None
+                    if rel.relation_type == "AUTHORED":
+                        src_hint = "Person"
+                        tgt_hint = "Paper"
+                    elif rel.relation_type == "AFFILIATED_WITH":
+                        src_hint = "Person"
+                        tgt_hint = "Organization"
+                    elif rel.relation_type == "CITES":
+                        src_hint = "Paper"
+                        tgt_hint = "Paper"
+                    elif rel.relation_type == "USES_DATASET":
+                        src_hint = "Model"
+                        tgt_hint = "Dataset"
+                    elif rel.relation_type == "HAS_TOPIC":
+                        src_hint = "Paper"
+                        tgt_hint = "Topic"
+
+                    self._ensure_stub_node(rel.target_entity_id, label_hint=tgt_hint)
+                    self._ensure_stub_node(rel.source_entity_id, label_hint=src_hint)
 
                     rel_query = f"""
                     MATCH (s {{id: $source_id}}), (t {{id: $target_id}})
@@ -127,8 +146,9 @@ class PublicGraphPersister:
         name = data.get("title") or data.get("name") or node_id
 
         query = f"""
-        MERGE (n:{label} {{id: $node_id}})
-        SET n.name = $name,
+        MERGE (n {{id: $node_id}})
+        SET n:{label},
+            n.name = $name,
             n.label = $name
         """
         params: dict[str, Any] = {"node_id": node_id, "name": name}
@@ -156,13 +176,12 @@ class PublicGraphPersister:
         query += " RETURN n.id"
         self.client.query(query, params=params, graph_name=self.graph_name)
 
-    def _ensure_stub_node(self, node_id: str) -> None:
+    def _ensure_stub_node(self, node_id: str, label_hint: str | None = None) -> None:
         """Ensures that a node with the given ID exists so that relationships can bind to it."""
-        label = self._infer_label_from_id(node_id)
+        label = self._normalize_label(label_hint) if label_hint else self._infer_label_from_id(node_id)
         query = f"""
-        MERGE (n:{label} {{id: $node_id}})
-        ON CREATE SET n.name = $node_id, n.label = $node_id, n.is_stub = true
-        RETURN n.id
+        MERGE (n {{id: $node_id}})
+        ON CREATE SET n:{label}, n.name = $node_id, n.label = $node_id, n.is_stub = true
         """
         self.client.query(query, params={"node_id": node_id}, graph_name=self.graph_name)
 
@@ -178,12 +197,16 @@ class PublicGraphPersister:
         return mapping.get(entity_type.lower(), LABEL_MODEL)
 
     def _infer_label_from_id(self, node_id: str) -> str:
-        prefix = node_id.split(":")[0].lower()
+        clean = node_id.strip()
+        parts = clean.split(":")
+        prefix = parts[0].lower() if parts else ""
+        sub = parts[1] if len(parts) > 1 else ""
+
         if prefix in ("org", "institution"):
             return LABEL_ORGANIZATION
         if prefix in ("person", "author"):
             return LABEL_PERSON
-        if prefix in ("paper", "crossref"):
+        if prefix in ("paper", "crossref", "doi"):
             return LABEL_PAPER
         if prefix in ("topic",):
             return LABEL_TOPIC
@@ -191,6 +214,26 @@ class PublicGraphPersister:
             return LABEL_DATASET
         if prefix in ("model",):
             return LABEL_MODEL
+
+        # OpenAlex IDs: A (author), I (institution), W (work/paper), T (topic)
+        if prefix == "openalex":
+            if sub.startswith("A") or sub.startswith("author"):
+                return LABEL_PERSON
+            elif sub.startswith("I") or sub.startswith("inst"):
+                return LABEL_ORGANIZATION
+            elif sub.startswith("W") or "/" in sub or sub.startswith("10."):
+                return LABEL_PAPER
+            elif sub.startswith("T"):
+                return LABEL_TOPIC
+
+        if prefix == "doi" or clean.startswith("10."):
+            return LABEL_PAPER
+
+        if prefix == "hf":
+            if sub.startswith("dataset") or "dataset" in sub:
+                return LABEL_DATASET
+            return LABEL_MODEL
+
         return LABEL_MODEL
 
     def get_subgraph(self, limit: int = 50) -> dict[str, Any]:
@@ -199,12 +242,20 @@ class PublicGraphPersister:
         nodes_query = f"""
         MATCH (n)
         WHERE NOT n:{LABEL_SOURCE_RECORD}
+          AND NOT n:_SchemaMetadata
+          AND NOT n:SchemaMetadata
+          AND NOT n:Investigation
+          AND NOT n:ToolInvocation
         RETURN DISTINCT n.id AS id, labels(n)[0] AS type, coalesce(n.name, n.id) AS label, properties(n) AS props
         LIMIT {limit}
         """
         edges_query = f"""
         MATCH (s)-[r]->(t)
         WHERE NOT s:{LABEL_SOURCE_RECORD} AND NOT t:{LABEL_SOURCE_RECORD}
+          AND NOT s:_SchemaMetadata AND NOT t:_SchemaMetadata
+          AND NOT s:SchemaMetadata AND NOT t:SchemaMetadata
+          AND NOT s:Investigation AND NOT t:Investigation
+          AND NOT s:ToolInvocation AND NOT t:ToolInvocation
         RETURN DISTINCT s.id AS source, t.id AS target, type(r) AS type, properties(r) AS props
         LIMIT {limit * 2}
         """
@@ -236,17 +287,17 @@ class PublicGraphPersister:
         hops = min(max(1, max_hops), 4)
         query = f"""
         MATCH p = (s {{id: $start_id}})-[*1..{hops}]-(t {{id: $target_id}})
-        RETURN [node in nodes(p) | {
-            id: node.id,
+        RETURN [node in nodes(p) | {{
+                   id: node.id,
                    label: coalesce(node.name, node.id),
                    type: labels(node)[0]
-               }] AS path_nodes,
-               [rel in relationships(p) | {
-            type: type(rel),
+               }}] AS path_nodes,
+               [rel in relationships(p) | {{
+                   type: type(rel),
                    confidence: rel.confidence,
                    evidence: rel.evidence_field,
                    provenance: rel.provenance_url
-               }] AS path_rels
+               }}] AS path_rels
         LIMIT 5
         """
         try:
@@ -260,3 +311,117 @@ class PublicGraphPersister:
         except Exception as exc:
             logger.warning("Path query failed: %s", exc)
             return []
+
+    def save_investigation(
+        self,
+        investigation_id: str,
+        question: str,
+        summary: str,
+        approach: str,
+        sources: list[str],
+        entities: list[dict[str, Any]],
+        next_action: dict[str, Any] | None = None,
+    ) -> bool:
+        """Persists a completed public-data investigation into FalkorDB as persistent memory."""
+        self.ensure_schema()
+        sources_str = ",".join(sources)
+        act_id = next_action.get("id", "") if next_action else ""
+        act_title = next_action.get("title", "") if next_action else ""
+        act_desc = next_action.get("description", "") if next_action else ""
+        act_status = next_action.get("status", "PROPOSED") if next_action else "PROPOSED"
+
+        query = """
+        MERGE (inv:PublicInvestigation {id: $inv_id})
+        SET inv.question = $question,
+            inv.summary = $summary,
+            inv.approach = $approach,
+            inv.sources = $sources,
+            inv.action_id = $act_id,
+            inv.action_title = $act_title,
+            inv.action_desc = $act_desc,
+            inv.action_status = $act_status,
+            inv.created_at = coalesce(inv.created_at, $created_at)
+        RETURN inv.id
+        """
+        try:
+            self.client.query(
+                query,
+                params={
+                    "inv_id": investigation_id,
+                    "question": question,
+                    "summary": summary,
+                    "approach": approach,
+                    "sources": sources_str,
+                    "act_id": act_id,
+                    "act_title": act_title,
+                    "act_desc": act_desc,
+                    "act_status": act_status,
+                    "created_at": time.time(),
+                },
+                graph_name=self.graph_name,
+            )
+
+            # Link investigation -> investigated entities
+            for ent in entities[:10]:
+                ent_id = ent.get("id")
+                if ent_id:
+                    self.client.query(
+                        """
+                        MATCH (inv:PublicInvestigation {id: $inv_id}), (e {id: $ent_id})
+                        MERGE (inv)-[:INVESTIGATED_ENTITY]->(e)
+                        """,
+                        params={"inv_id": investigation_id, "ent_id": ent_id},
+                        graph_name=self.graph_name,
+                    )
+            return True
+        except Exception as exc:
+            logger.warning("Failed saving investigation memory '%s': %s", investigation_id, exc)
+            return False
+
+    def list_saved_investigations(self, limit: int = 10) -> list[dict[str, Any]]:
+        """Retrieves past public investigations from FalkorDB graph memory."""
+        self.ensure_schema()
+        query = """
+        MATCH (inv:PublicInvestigation)
+        RETURN inv.id, inv.question, inv.summary, inv.sources, inv.approach,
+               inv.action_id, inv.action_title, inv.action_desc, inv.action_status,
+               coalesce(inv.created_at, 0.0) AS created_at
+        ORDER BY created_at DESC
+        LIMIT $limit
+        """
+        try:
+            rows = self.client.query(query, params={"limit": limit}, graph_name=self.graph_name)
+            results = []
+            for r in rows:
+                results.append(
+                    {
+                        "investigation_id": r[0],
+                        "question": r[1],
+                        "summary": r[2],
+                        "sources": r[3],
+                        "approach": r[4],
+                        "action_id": r[5],
+                        "action_title": r[6],
+                        "action_desc": r[7],
+                        "action_status": r[8] or "PROPOSED",
+                        "created_at": r[9],
+                    }
+                )
+            return results
+        except Exception as exc:
+            logger.warning("Failed listing saved investigations: %s", exc)
+            return []
+
+    def confirm_action(self, action_id: str) -> bool:
+        """Confirms and executes a proposed investigation action in the graph."""
+        query = """
+        MATCH (inv:PublicInvestigation {action_id: $action_id})
+        SET inv.action_status = 'CONFIRMED'
+        RETURN inv.id
+        """
+        try:
+            rows = self.client.query(query, params={"action_id": action_id}, graph_name=self.graph_name)
+            return len(rows) > 0
+        except Exception as exc:
+            logger.warning("Failed confirming action '%s': %s", action_id, exc)
+            return False

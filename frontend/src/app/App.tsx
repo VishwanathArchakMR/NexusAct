@@ -4,19 +4,17 @@ import { Footer } from "../components/Footer";
 import { InvestigationWorkspace } from "../features/investigation/InvestigationWorkspace";
 import { UniversalDiscoveryWorkspace } from "../features/discovery/UniversalDiscoveryWorkspace";
 import { SystemStatusDashboard } from "../features/system-status/SystemStatusDashboard";
-import { GitBranch, Globe, Cpu, BookOpen, Activity } from "lucide-react";
+import { GitBranch, Globe, Activity } from "lucide-react";
 import "./App.css";
 
-export type AppViewMode = "software" | "universal" | "ai_ecosystem" | "research" | "system";
+export type AppViewMode = "universal" | "software" | "system";
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<AppViewMode>("software");
+  const [view, setView] = useState<AppViewMode>("universal");
 
   const tabs: Array<{ id: AppViewMode; label: string; icon: React.ReactNode }> = [
+    { id: "universal", label: "Universal GAF", icon: <Globe size={14} /> },
     { id: "software", label: "Software Graph", icon: <GitBranch size={14} /> },
-    { id: "universal", label: "Universal Ask GAF", icon: <Globe size={14} /> },
-    { id: "ai_ecosystem", label: "AI Ecosystem", icon: <Cpu size={14} /> },
-    { id: "research", label: "Research & Citations", icon: <BookOpen size={14} /> },
     { id: "system", label: "Diagnostics", icon: <Activity size={14} /> },
   ];
 
@@ -68,10 +66,8 @@ export const App: React.FC = () => {
       </div>
 
       <main className="app-content" style={{ flex: 1 }}>
+        {view === "universal" && <UniversalDiscoveryWorkspace />}
         {view === "software" && <InvestigationWorkspace />}
-        {view === "universal" && <UniversalDiscoveryWorkspace initialMode="universal" />}
-        {view === "ai_ecosystem" && <UniversalDiscoveryWorkspace initialMode="ai_ecosystem" />}
-        {view === "research" && <UniversalDiscoveryWorkspace initialMode="research" />}
         {view === "system" && <SystemStatusDashboard />}
       </main>
 

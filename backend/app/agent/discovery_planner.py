@@ -47,6 +47,8 @@ class UniversalInvestigationResult(BaseModel):
     paths: list[dict[str, Any]] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     summary: str = ""
+    approach: str = ""
+    next_action: dict[str, Any] | None = None
     coverage_limitations: list[str] = Field(default_factory=list)
     execution_time_ms: float = 0.0
 
@@ -307,6 +309,25 @@ class UniversalDiscoveryPlanner:
             f"{(time.monotonic() - start_ts):.2f}s."
         )
 
+        sources_list = ", ".join(plan.selected_source_ids)
+        approach_desc = (
+            f"Selected connectors: [{sources_list}] targeting entity types {plan.target_entity_types}. "
+            f"Executed bounded semantic retrieval with canonical DOI reconciliation, FalkorDB graph persistence, "
+            f"and multi-hop traversal bounded to {plan.traversal_depth} hops."
+        )
+
+        top_entity_name = entities_summary[0]["name"] if entities_summary else "investigated topic"
+        action_id = f"act_{uuid.uuid4().hex[:8]}"
+        next_action_dict = {
+            "id": action_id,
+            "title": f"Track upstream citations & updates for {top_entity_name}",
+            "description": (
+                f"Register a follow-up graph monitor task to track incoming citations "
+                f"and derivative works for '{top_entity_name}'."
+            ),
+            "status": "PROPOSED",
+        }
+
         return UniversalInvestigationResult(
             question=question,
             plan=plan,
@@ -317,6 +338,8 @@ class UniversalDiscoveryPlanner:
             paths=discovered_paths,
             findings=findings,
             summary=summary,
+            approach=approach_desc,
+            next_action=next_action_dict,
             coverage_limitations=list(set(limitations)),
             execution_time_ms=(time.monotonic() - start_ts) * 1000.0,
         )

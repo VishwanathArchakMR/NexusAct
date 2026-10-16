@@ -277,3 +277,24 @@ export async function fetchPublicSubgraph(
   );
 }
 
+export async function fetchSavedInvestigations(
+  limit = 10
+): Promise<{ investigations: import("../types/discovery").SavedInvestigation[]; total: number }> {
+  const url = `${config.apiBaseUrl}/api/v1/discover/investigations?limit=${limit}`;
+  const res = await fetch(url);
+  return handleResponse(res, "Failed to load saved investigations");
+}
+
+export async function confirmInvestigationAction(
+  actionId: string
+): Promise<{ action_id: string; status: string; message: string }> {
+  const url = `${config.apiBaseUrl}/api/v1/discover/actions/confirm`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: actionId }),
+  });
+  return handleResponse(res, "Failed to confirm action");
+}
+
+

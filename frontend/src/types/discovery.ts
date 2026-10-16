@@ -62,8 +62,28 @@ export interface UniversalInvestigationResult {
   }>;
   findings: string[];
   summary: string;
+  approach?: string;
+  next_action?: {
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+  } | null;
   coverage_limitations: string[];
   execution_time_ms: number;
+}
+
+export interface SavedInvestigation {
+  investigation_id: string;
+  question: string;
+  summary: string;
+  sources: string;
+  approach: string;
+  action_id: string;
+  action_title: string;
+  action_desc: string;
+  action_status: string;
+  created_at?: number;
 }
 
 export interface PublicSubgraphResponse {

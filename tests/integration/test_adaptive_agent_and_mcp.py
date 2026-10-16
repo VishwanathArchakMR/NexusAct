@@ -11,7 +11,36 @@ import pytest
 from backend.app.agent.llm import FakeLLMProvider, LLMDecision, NoneLLMProvider
 from backend.app.agent.planner import AdaptiveInvestigationAgent
 from backend.app.graph.client import graph_client
+from backend.app.graph.initialization import initialize_schema
+from backend.app.graph.schema import LABEL_FILE, LABEL_MODULE, format_file_id, format_module_id
 from mcp_server.server import create_mcp_server
+
+
+@pytest.fixture(autouse=True, scope="module")
+def ensure_primary_graph_seeded():
+    """Ensure target module backend.app.graph.client exists in primary graph for testing."""
+    graph_name = graph_client.primary_graph_name
+    try:
+        initialize_schema(graph_client, graph_name)
+    except Exception:
+        pass
+
+    mod_id = format_module_id("backend.app.graph.client")
+    file_id = format_file_id("backend/app/graph/client.py")
+    graph_client.query(
+        f"""
+        MERGE (m:{LABEL_MODULE} {{id: $mod_id}})
+        SET m.name = 'backend.app.graph.client',
+            m.file_path = 'backend/app/graph/client.py',
+            m.loc = 150
+        MERGE (f:{LABEL_FILE} {{id: $file_id}})
+        SET f.path = 'backend/app/graph/client.py'
+        MERGE (m)-[:DEFINED_IN]->(f)
+        """,
+        params={"mod_id": mod_id, "file_id": file_id},
+        graph_name=graph_name,
+    )
+    yield
 
 
 @pytest.mark.asyncio
