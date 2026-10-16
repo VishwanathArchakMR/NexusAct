@@ -1,13 +1,13 @@
 #!/usr/bin/env pwsh
 # ==============================================================================
-# NexusAct (GraphAction Fabric) — Reliable Local Startup Script (PowerShell)
+# NexusAct (GraphAction Fabric) - Reliable Local Startup Script (PowerShell)
 # Compatible with: Docker Desktop WSL integration OR bare WSL2 Docker daemon
 # ==============================================================================
 #
 # DOCKER STRATEGY SELECTION:
-#   1. Docker Desktop (windows-native docker.exe) — checked first.
+#   1. Docker Desktop (windows-native docker.exe) - checked first.
 #      Requires Docker Desktop to be running with WSL integration enabled.
-#   2. WSL2 bare daemon (wsl docker) — fallback.
+#   2. WSL2 bare daemon (wsl docker) - fallback.
 #      Requires Docker daemon started manually in WSL2.
 #
 # SECURITY NOTE:
@@ -32,7 +32,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 
 Set-Location $ProjectRoot
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 
 function Write-Step {
     param([string]$Text, [string]$Color = "Cyan")
@@ -43,7 +43,7 @@ function Write-Ok   { param([string]$T) Write-Host "  [OK]  $T" -ForegroundColor
 function Write-Warn { param([string]$T) Write-Host "  [!!]  $T" -ForegroundColor Yellow }
 function Write-Fail { param([string]$T) Write-Host "  [FAIL] $T" -ForegroundColor Red }
 
-# ── Step 1: Detect working Docker executor ───────────────────────────────────
+# -- Step 1: Detect working Docker executor -----------------------------------
 
 Write-Step "Detecting Docker execution method..."
 
@@ -79,7 +79,7 @@ if (-not $DockerMode) {
         if ($LASTEXITCODE -eq 0 -and $wslPing -notmatch "error") {
             $DockerMode = "WSL2"
             # Ensure WSL2 does not terminate when idle
-            Start-Process -FilePath "wsl" -ArgumentList "-d Ubuntu -u root -- /bin/bash -c ""while true; do sleep 3600; done""" -WindowStyle Hidden
+            Start-Process -FilePath "wsl" -ArgumentList @("-d", "Ubuntu", "-u", "root", "--", "/bin/bash", "-c", "while true; do sleep 3600; done") -WindowStyle Hidden
             Write-Ok "WSL2 Docker daemon is responding (server $wslPing)"
         } else {
             Write-Warn "WSL2 Docker daemon not responding: $wslPing"
@@ -104,7 +104,7 @@ if (-not $DockerMode) {
 
 Write-Ok "Using Docker mode: $DockerMode"
 
-# ── Step 2: Start FalkorDB via docker-compose ─────────────────────────────────
+# -- Step 2: Start FalkorDB via docker-compose ---------------------------------
 
 Write-Step "Starting FalkorDB container..."
 
@@ -129,8 +129,8 @@ if ($DockerMode -eq "DockerDesktop") {
     }
 }
 
-# ── Step 3: Wait for real FalkorDB readiness ──────────────────────────────────
-# We do NOT just check TCP port open — we send an actual PING command via
+# -- Step 3: Wait for real FalkorDB readiness ----------------------------------
+# We do NOT just check TCP port open - we send an actual PING command via
 # the Python client, which verifies the FalkorDB module is loaded.
 
 Write-Step "Waiting for FalkorDB readiness..."
@@ -179,7 +179,7 @@ if ($DatabaseOnly) {
     exit 0
 }
 
-# ── Step 4: Start FastAPI backend ─────────────────────────────────────────────
+# -- Step 4: Start FastAPI backend ---------------------------------------------
 
 Write-Step "Starting FastAPI backend..."
 
@@ -230,7 +230,7 @@ if (-not $backendRunning) {
     }
 }
 
-# ── Step 5: Start Vite frontend ───────────────────────────────────────────────
+# -- Step 5: Start Vite frontend -----------------------------------------------
 
 if (-not $SkipFrontend) {
     Write-Step "Starting Vite frontend..."
@@ -269,12 +269,12 @@ if (-not $SkipFrontend) {
     }
 }
 
-# ── Step 6: Report status ─────────────────────────────────────────────────────
+# -- Step 6: Report status -----------------------------------------------------
 
 Write-Step "Service Status" "Green"
 
 Write-Host "`n  Service         Status       URL" -ForegroundColor White
-Write-Host "  ─────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
 Write-Host "  FalkorDB        READY        127.0.0.1:6379 (Docker, loopback-only)" -ForegroundColor Green
 
 if ($backendReady) {
