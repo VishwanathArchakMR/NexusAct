@@ -156,21 +156,29 @@ def get_graph_subgraph(
 
     try:
         if center_module_id:
+            c_target = center_module_id if center_module_id.startswith("mod:") else f"mod:{center_module_id}"
             query_str = f"""
-            MATCH (center:{LABEL_MODULE} {{id: $center_id}})
+            MATCH (center:{LABEL_MODULE})
+            WHERE center.id = $center_id OR center.id = $alt_id OR center.name = $center_id
             OPTIONAL MATCH p = (center)-[r:{REL_DEPENDS_ON}*1..{depth}]-(neighbor:{LABEL_MODULE})
             WITH center, collect(nodes(p)) AS path_nodes, collect(relationships(p)) AS path_rels
             RETURN center, path_nodes, path_rels
             LIMIT 1
             """
-            raw = graph_client.query(query_str, params={"center_id": center_module_id}, graph_name=target_graph)
+            raw = graph_client.query(
+                query_str,
+                params={"center_id": center_module_id, "alt_id": c_target},
+                graph_name=target_graph,
+            )
             nodes_map = {}
             edges_map = {}
+            internal_to_business: Dict[Any, str] = {}
 
             if raw:
                 center_node, path_nodes_list, path_rels_list = raw[0][0], raw[0][1], raw[0][2]
                 center_props = getattr(center_node, "properties", {})
                 c_id = center_props.get("id", str(getattr(center_node, "id", "center")))
+                internal_to_business[getattr(center_node, "id", c_id)] = c_id
                 nodes_map[c_id] = GraphNode(
                     id=c_id,
                     label=center_props.get("name", c_id),
@@ -182,21 +190,27 @@ def get_graph_subgraph(
                     for n in node_group or []:
                         props = getattr(n, "properties", {})
                         n_id = props.get("id", str(getattr(n, "id", "")))
-                        if n_id and n_id not in nodes_map:
-                            nodes_map[n_id] = GraphNode(
-                                id=n_id,
-                                label=props.get("name", n_id),
-                                type="Module",
-                                properties=props,
-                            )
+                        if n_id:
+                            internal_to_business[getattr(n, "id", n_id)] = n_id
+                            if n_id not in nodes_map:
+                                nodes_map[n_id] = GraphNode(
+                                    id=n_id,
+                                    label=props.get("name", n_id),
+                                    type="Module",
+                                    properties=props,
+                                )
 
                 for rel_group in path_rels_list or []:
                     for r in rel_group or []:
                         r_props = getattr(r, "properties", {})
-                        src_id = str(getattr(r, "src_node", ""))
-                        dst_id = str(getattr(r, "dest_node", ""))
+                        raw_src = getattr(r, "src_node", None)
+                        raw_dst = getattr(r, "dest_node", None)
+                        src_id = internal_to_business.get(raw_src, str(raw_src))
+                        dst_id = internal_to_business.get(raw_dst, str(raw_dst))
                         edge_id = r_props.get("id", f"{src_id}->{dst_id}")
-                        if edge_id not in edges_map:
+
+                        # Ensure both ends exist in nodes_map to maintain strict graph integrity
+                        if src_id in nodes_map and dst_id in nodes_map and edge_id not in edges_map:
                             edges_map[edge_id] = GraphEdge(
                                 id=edge_id,
                                 source=src_id,

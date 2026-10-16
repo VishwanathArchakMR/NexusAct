@@ -228,3 +228,39 @@ def seed_synthetic_graph(client: FalkorDBClient, graph_name: str = SYNTHETIC_TES
 def teardown_synthetic_graph(client: FalkorDBClient, graph_name: str = SYNTHETIC_TEST_GRAPH) -> bool:
     """Safely cleans up the synthetic fixture graph."""
     return client.delete_graph(graph_name, force=True)
+
+
+TYPESCRIPT_TEST_GRAPH = "repo_test_typescript_fixture"
+TYPESCRIPT_REPO_ID = "repo:test_lifeassist_ai"
+
+
+def seed_typescript_fixture(client: FalkorDBClient, graph_name: str = TYPESCRIPT_TEST_GRAPH) -> Dict[str, Any]:
+    """Deterministically ingests the isolated TypeScript test fixture into FalkorDB."""
+    from pathlib import Path
+
+    from backend.app.ingestion.engine import RepositoryIngestionEngine
+    from backend.app.sources.registry import repo_registry
+
+    fixture_path = Path(__file__).parent / "typescript_repo"
+    rec = repo_registry.register_local_repository(
+        local_path=str(fixture_path),
+        display_name="LifeAssist AI (TypeScript)",
+        custom_graph_name=graph_name,
+    )
+    engine = RepositoryIngestionEngine(client)
+    report = engine.ingest(
+        repo_path=str(fixture_path),
+        graph_name=graph_name,
+        repo_id=rec.id,
+    )
+    rec.status = "READY"
+    rec.commit_sha = report.commit_sha or "ts-fixture-sha"
+    repo_registry._repositories[rec.id] = rec
+    repo_registry._save()
+
+    return {
+        "graph_name": graph_name,
+        "repo_id": rec.id,
+        "module_count": report.module_count,
+        "edge_count": report.import_edge_count,
+    }

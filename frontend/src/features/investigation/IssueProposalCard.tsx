@@ -19,6 +19,14 @@ export const IssueProposalCard: React.FC<IssueProposalCardProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [prevInvId, setPrevInvId] = useState(investigationId);
+  if (investigationId !== prevInvId) {
+    setPrevInvId(investigationId);
+    setProposal(null);
+    setExecutionResult(null);
+    setError(null);
+  }
+
   const handleCreateProposal = async () => {
     setIsLoading(true);
     setError(null);

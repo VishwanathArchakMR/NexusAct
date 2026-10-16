@@ -423,8 +423,8 @@ class AdaptiveInvestigationAgent:
             graph_name=target_graph,
         )
 
-        # 6. Build Proposal if requested and none generated
-        if not action_proposal and ("issue" in question.lower() or "action" in question.lower()):
+        # 6. Build Proposal tailored to investigation
+        if not action_proposal:
             action_proposal = self._generate_verified_action_proposal(
                 target_name=target_name or "Repository",
                 target_id=resolved_id or "repo_wide",
@@ -432,6 +432,7 @@ class AdaptiveInvestigationAgent:
                 reviewers=reviewer_data,
                 simulation=simulation_data,
                 verification=verification_result,
+                question=question,
             )
 
         if not final_summary:
@@ -514,6 +515,44 @@ class AdaptiveInvestigationAgent:
                 )
             return LLMDecision(action="finish", finish_summary="Repository-level analysis complete.")
 
+        # Check for multi-entity path query (e.g. "How does A connect to B?" or "path from A to B")
+        import re
+
+        path_match = re.search(
+            r"(?:between|from)\s+([`'\"]?[\w\.\/\-]+[`'\"]?)\s+(?:and|to)\s+([`'\"]?[\w\.\/\-]+[`'\"]?)",
+            question,
+            re.IGNORECASE,
+        )
+        if not path_match:
+            path_match = re.search(
+                r"how does\s+([`'\"]?[\w\.\/\-]+[`'\"]?)\s+connect(?:s)?\s+to\s+([`'\"]?[\w\.\/\-]+[`'\"]?)",
+                question,
+                re.IGNORECASE,
+            )
+
+        if path_match and "nexusact_shortest_path" not in called_tools:
+            src_raw = path_match.group(1).strip("`'\" ")
+            dst_raw = path_match.group(2).strip("`'\" ")
+            return LLMDecision(
+                action="call_tool",
+                tool_call=LLMToolCall(
+                    tool_name="nexusact_shortest_path",
+                    arguments={"source_identifier": src_raw, "target_identifier": dst_raw},
+                    reasoning=f"Trace path and multi-hop connections from {src_raw} to {dst_raw}.",
+                ),
+            )
+
+        # If question was specifically about path and path was executed, finish
+        if (
+            "nexusact_shortest_path" in called_tools
+            and any(w in q_lower for w in ["path", "connect", "between"])
+            and not any(w in q_lower for w in ["break", "impact", "refactor"])
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Shortest path exploration and multi-hop verification completed.",
+            )
+
         # Target-specific adaptive tool choices
         if (
             "neighbor" in q_lower or "adjacent" in q_lower or "1-hop" in q_lower
@@ -527,21 +566,50 @@ class AdaptiveInvestigationAgent:
                 ),
             )
 
+        # Question exclusively about contributors/reviewers
         if (
-            "who" in q_lower or "author" in q_lower or "review" in q_lower or "contributor" in q_lower
-        ) and "nexusact_who_knows" not in called_tools:
+            any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"])
+            and "nexusact_who_knows" not in called_tools
+        ):
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
                     tool_name="nexusact_who_knows",
                     arguments={"module_identifier": target_id, "limit": 5},
-                    reasoning="Identify experienced contributors for this module.",
+                    reasoning="Identify experienced contributors, commit authors, and designated code reviewers.",
                 ),
             )
 
+        # If question was solely about reviewers and who_knows has run, finish without unnecessary simulation
         if (
-            "remove" in q_lower or "simulate" in q_lower or "blast radius" in q_lower
-        ) and "nexusact_simulate_remove_module" not in called_tools:
+            "nexusact_who_knows" in called_tools
+            and any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"])
+            and not any(w in q_lower for w in ["break", "impact", "affect", "refactor", "modify", "remove", "risk"])
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Reviewer and contributor ownership evidence analysis complete.",
+            )
+
+        # Centrality / PageRank query
+        if (
+            any(w in q_lower for w in ["pagerank", "central", "important", "critical"])
+            and "nexusact_page_rank" not in called_tools
+        ):
+            return LLMDecision(
+                action="call_tool",
+                tool_call=LLMToolCall(
+                    tool_name="nexusact_page_rank",
+                    arguments={"limit": 10},
+                    reasoning="Evaluate architectural centrality across the dependency network.",
+                ),
+            )
+
+        # Simulation / Blast radius query
+        if (
+            any(w in q_lower for w in ["remove", "simulate", "blast radius", "counterfactual"])
+            and "nexusact_simulate_remove_module" not in called_tools
+        ):
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
@@ -552,8 +620,9 @@ class AdaptiveInvestigationAgent:
             )
 
         if (
-            "source" in q_lower or "metadata" in q_lower or "gap" in q_lower
-        ) and "nexusact_source_metadata" not in called_tools:
+            any(w in q_lower for w in ["source", "metadata", "gap", "provenance"])
+            and "nexusact_source_metadata" not in called_tools
+        ):
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
@@ -563,7 +632,41 @@ class AdaptiveInvestigationAgent:
                 ),
             )
 
-        # Standard evidence chain:
+        # Security Triage Workflow
+        if any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise"]):
+            if "nexusact_trace_impact" not in called_tools:
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_trace_impact",
+                        arguments={"module_identifier": target_id, "max_depth": 4},
+                        reasoning="[Security Triage] Trace upstream modules exposed to this component.",
+                    ),
+                )
+            if "nexusact_who_knows" not in called_tools:
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_who_knows",
+                        arguments={"module_identifier": target_id, "limit": 5},
+                        reasoning="[Security Triage] Identify code owners and security contacts to alert.",
+                    ),
+                )
+            if "nexusact_simulate_remove_module" not in called_tools:
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_simulate_remove_module",
+                        arguments={"module_identifier": target_id},
+                        reasoning="[Security Triage] Simulate isolating this module to assess mitigation impact.",
+                    ),
+                )
+            return LLMDecision(
+                action="finish",
+                finish_summary="Security triage complete: mapped exposure, code owners, and blast radius.",
+            )
+
+        # Standard evidence chain for impact / modification / refactoring questions:
         # Step 1: Trace reverse impact
         if "nexusact_trace_impact" not in called_tools:
             return LLMDecision(
@@ -598,19 +701,6 @@ class AdaptiveInvestigationAgent:
                 ),
             )
 
-        # Step 4: PageRank
-        if "nexusact_page_rank" not in called_tools and (
-            "pagerank" in q_lower or "central" in q_lower or "important" in q_lower
-        ):
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_page_rank",
-                    arguments={"limit": 10},
-                    reasoning="Evaluate architectural centrality across the dependency network.",
-                ),
-            )
-
         return LLMDecision(
             action="finish",
             finish_summary="Evidence-backed graph investigation concluded.",
@@ -624,15 +714,27 @@ class AdaptiveInvestigationAgent:
         reviewers: Optional[WhoKnowsOutput],
         simulation: Optional[SimulationResult],
         verification: Optional[PathVerificationResult],
+        question: str = "",
     ) -> Dict[str, Any]:
         """Constructs an action proposal strictly derived from verified graph findings."""
-        title = f"[NexusAct] Architecture impact report for {target_name}"
+        q_lower = question.lower()
+        if any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise"]):
+            title = f"[NexusAct Security Triage] Remediation & blast radius for {target_name}"
+        elif any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"]) and not any(
+            w in q_lower for w in ["break", "impact", "refactor", "risk"]
+        ):
+            title = f"[NexusAct Code Ownership] Designate experienced code reviewers for {target_name}"
+        elif any(w in q_lower for w in ["path", "connect", "between"]):
+            title = f"[NexusAct Path Verification] Multi-hop relationship path analysis for {target_name}"
+        else:
+            title = f"[NexusAct Impact Analysis] Safe refactoring guardrails for {target_name}"
 
         body_lines = [
             f"## NexusAct Investigation Summary for `{target_name}`",
             "",
             f"**Target Module ID:** `{target_id}`",
             f"**Graph Verification Status:** `{verification.status.value if verification else 'UNVERIFIED'}`",
+            f"**Original Investigation Question:** {question or 'N/A'}",
             "",
             "### Upstream Impact Analysis",
         ]

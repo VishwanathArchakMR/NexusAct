@@ -1,0 +1,9 @@
+{
+  "name": "lifeassist-ai",
+  "version": "1.0.0",
+  "description": "Deterministic TypeScript fixture repository for LifeAssist AI",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "^18.2.0"
+  }
+}

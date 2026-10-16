@@ -1,7 +1,20 @@
-import React from "react";
-import { GitGraph, ShieldCheck, Terminal } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { GitGraph, ShieldCheck, Terminal, Sun, Moon } from "lucide-react";
 
 export const Header: React.FC = () => {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    return (localStorage.getItem("nexusact_theme") as "light" | "dark") || "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("nexusact_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((t) => (t === "light" ? "dark" : "light"));
+  };
+
   return (
     <header
       style={{
@@ -12,7 +25,7 @@ export const Header: React.FC = () => {
     >
       <div
         style={{
-          maxWidth: "1200px",
+          maxWidth: "1400px",
           margin: "0 auto",
           display: "flex",
           justifyContent: "space-between",
@@ -47,9 +60,9 @@ export const Header: React.FC = () => {
                   fontSize: "0.7rem",
                   padding: "0.15rem 0.45rem",
                   borderRadius: "4px",
-                  backgroundColor: "rgba(59, 130, 246, 0.15)",
+                  backgroundColor: "var(--accent-blue-subtle)",
                   color: "var(--accent-blue)",
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  border: "1px solid var(--border-focus)",
                   fontWeight: 600,
                 }}
               >
@@ -59,11 +72,40 @@ export const Header: React.FC = () => {
             <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
               Graph-Native AI That Investigates, Simulates, and Acts
             </p>
-
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button
+            onClick={toggleTheme}
+            title={theme === "light" ? "Switch to Dark Theme" : "Switch to Light Theme"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              padding: "0.35rem 0.75rem",
+              borderRadius: "6px",
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              color: "var(--text-primary)",
+              cursor: "pointer",
+            }}
+          >
+            {theme === "light" ? (
+              <>
+                <Moon size={14} color="var(--accent-blue)" />
+                <span>Dark Mode</span>
+              </>
+            ) : (
+              <>
+                <Sun size={14} color="#f59e0b" />
+                <span>Light Mode</span>
+              </>
+            )}
+          </button>
+
           <span
             style={{
               display: "flex",
@@ -93,7 +135,7 @@ export const Header: React.FC = () => {
               border: "1px solid var(--border-subtle)",
             }}
           >
-            <Terminal size={15} color="#60a5fa" />
+            <Terminal size={15} color="var(--accent-blue)" />
             FastAPI + MCP
           </span>
         </div>

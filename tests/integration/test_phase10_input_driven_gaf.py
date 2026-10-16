@@ -64,24 +64,31 @@ def test_phase10_test_b_two_different_repositories() -> None:
     nodes_a = {n["id"] for n in data_a.get("scoped_subgraph", {}).get("nodes", [])}
     assert len(nodes_a) > 0, "NexusAct graph should contain modules"
 
-    # 2. Investigate Repo B (LifeAssist_AI TypeScript repo on repo_vishwanatharchakmr_lifeas)
+    # 2. Investigate Repo B (Deterministic TypeScript repository fixture)
+    from backend.app.graph.client import graph_client
+    from tests.fixtures.synthetic_graph import seed_typescript_fixture
+
+    fixture_info = seed_typescript_fixture(graph_client)
+    repo_b_id = fixture_info["repo_id"]
+    graph_b_name = fixture_info["graph_name"]
+
     resp_b = client.post(
         "/api/v1/discover/ask-gaf",
         json={
             "question": "What are the core imported dependencies and modules in this repository?",
             "input_mode": "repository",
-            "repository_id": "repo:vishwanatharchakmr_lifeassist_ai",
-            "graph_name": "repo_vishwanatharchakmr_lifeas",
+            "repository_id": repo_b_id,
+            "graph_name": graph_b_name,
         },
     )
     assert resp_b.status_code == 200
     data_b = resp_b.json()
     assert data_b["input_mode"] == "repository"
-    assert data_b["repository_id"] == "repo:vishwanatharchakmr_lifeassist_ai"
-    assert data_b["graph_name"] == "repo_vishwanatharchakmr_lifeas"
+    assert data_b["repository_id"] == repo_b_id
+    assert data_b["graph_name"] == graph_b_name
 
     nodes_b = {n["id"] for n in data_b.get("scoped_subgraph", {}).get("nodes", [])}
-    assert len(nodes_b) > 0, "LifeAssist graph should contain modules"
+    assert len(nodes_b) > 0, "TypeScript fixture graph should contain modules"
 
     # Verify strict isolation: No nodes from Repo A are returned in Repo B's scoped subgraph
     overlap = nodes_a.intersection(nodes_b)

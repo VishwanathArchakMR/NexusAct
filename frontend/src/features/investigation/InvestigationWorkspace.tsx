@@ -254,6 +254,17 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       ? Array.from(new Set(sim.surviving_paths.flatMap((p) => p.surviving_path)))
       : [];
 
+  const activePathNodes: string[] = React.useMemo(() => {
+    if (report?.shortest_path_result?.path_nodes && report.shortest_path_result.path_nodes.length > 0) {
+      return report.shortest_path_result.path_nodes;
+    }
+    if (report?.impact_result?.impacted_modules) {
+      const multiHop = report.impact_result.impacted_modules.find((m) => m.path && m.path.length >= 2);
+      if (multiHop) return multiHop.path;
+    }
+    return [];
+  }, [report]);
+
   return (
     <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "1.5rem 1rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {/* Repository Scope & Onboarding Banner */}
@@ -837,83 +848,242 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Verified Status Banner (Scoped strictly to current repository) */}
+      {/* First-Class Investigation Summary Card (Scoped strictly to current repository) */}
       {report && report.status === "COMPLETED" && (!report.repository_id || report.repository_id === selectedRepoId) && (
         <div
           style={{
-            backgroundColor: "#ffffff",
-            borderRadius: "8px",
+            backgroundColor: "var(--bg-card)",
+            borderRadius: "10px",
             border: "1px solid var(--border-subtle)",
-            padding: "0.85rem 1.25rem",
-            boxShadow: "var(--shadow-sm)",
+            boxShadow: "var(--shadow-md)",
+            overflow: "hidden",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "0.75rem",
+            flexDirection: "column",
           }}
         >
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                {report.target_module_name}
-              </span>
-              {report.verification && (
-                <span
-                  style={{
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "4px",
-                    backgroundColor:
-                      report.verification.status === "VERIFIED"
-                        ? "var(--status-verified-bg)"
-                        : "var(--status-unknown-bg)",
-                    color:
-                      report.verification.status === "VERIFIED"
-                        ? "var(--status-verified-text)"
-                        : "var(--status-unknown-text)",
-                    border: `1px solid ${
-                      report.verification.status === "VERIFIED"
-                        ? "var(--status-verified-border)"
-                        : "var(--status-unknown-border)"
-                    }`,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  <ShieldCheck size={12} />
-                  {report.verification.status}
+          {/* Header Row */}
+          <div
+            style={{
+              padding: "0.85rem 1.25rem",
+              backgroundColor: "var(--bg-secondary)",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Investigation Findings: {report.target_module_name || "Repository Scope"}
                 </span>
-              )}
-              {report.is_heuristic_fallback && (
-                <span
-                  style={{
-                    fontSize: "0.68rem",
-                    fontWeight: 600,
-                    padding: "0.15rem 0.45rem",
-                    borderRadius: "4px",
-                    backgroundColor: "var(--bg-muted)",
-                    color: "var(--text-secondary)",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                  title="Deterministic MCP tool sequence executed (no configured LLM API key required)"
-                >
-                  Heuristic Fallback
-                </span>
-              )}
+                {report.verification && (
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      padding: "0.15rem 0.55rem",
+                      borderRadius: "4px",
+                      backgroundColor:
+                        report.verification.status === "VERIFIED"
+                          ? "var(--status-verified-bg)"
+                          : "var(--status-unknown-bg)",
+                      color:
+                        report.verification.status === "VERIFIED"
+                          ? "var(--status-verified-text)"
+                          : "var(--status-unknown-text)",
+                      border: `1px solid ${
+                        report.verification.status === "VERIFIED"
+                          ? "var(--status-verified-border)"
+                          : "var(--status-unknown-border)"
+                      }`,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                    }}
+                  >
+                    <ShieldCheck size={13} />
+                    {report.verification.status}
+                  </span>
+                )}
+                {report.is_heuristic_fallback && (
+                  <span
+                    style={{
+                      fontSize: "0.68rem",
+                      fontWeight: 600,
+                      padding: "0.15rem 0.45rem",
+                      borderRadius: "4px",
+                      backgroundColor: "var(--bg-muted)",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                    title="Adaptive MCP tool sequence executed (deterministic tool planning)"
+                  >
+                    MCP Adaptive Plan
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "0.25rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <span>Repo: <strong>{report.repository_id || selectedRepoId}</strong></span>
+                <span>Graph: <strong>{report.graph_name || activeRepo?.graph_name}</strong></span>
+                <span>Revision: <strong style={{ fontFamily: "var(--font-mono)" }}>{report.commit_sha?.slice(0, 8) || activeRepo?.commit_sha?.slice(0, 8) || "HEAD"}</strong></span>
+                <span>Question: <em>"{report.question}"</em></span>
+              </div>
             </div>
-            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.2rem" }}>
-              {report.summary}
-            </p>
+
+            {/* Quick Tab Switch Buttons */}
+            <div style={{ display: "flex", gap: "0.4rem" }}>
+              <button
+                onClick={() => setActiveTab("graph")}
+                style={{
+                  padding: "0.35rem 0.65rem",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  borderRadius: "5px",
+                  border: "1px solid var(--border-subtle)",
+                  backgroundColor: activeTab === "graph" ? "var(--accent-blue-subtle)" : "var(--bg-primary)",
+                  color: activeTab === "graph" ? "var(--accent-blue)" : "var(--text-secondary)",
+                  cursor: "pointer",
+                }}
+              >
+                Graph Canvas
+              </button>
+              <button
+                onClick={() => setActiveTab("action")}
+                style={{
+                  padding: "0.35rem 0.75rem",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  borderRadius: "5px",
+                  border: "none",
+                  backgroundColor: "var(--accent-blue)",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.3rem",
+                }}
+              >
+                Verified Action →
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: "1rem", fontSize: "0.78rem", color: "var(--text-muted)", flexWrap: "wrap" }}>
-            <span>Tools Run: <strong>{report.budget_used}</strong></span>
-            <span>Upstream Callers: <strong>{report.impact_result?.total_impacted_count ?? 0}</strong></span>
-            <span>Broken Paths: <strong style={{ color: "#e11d48" }}>{report.simulation_result?.disappeared_paths_count ?? 0}</strong></span>
-            <span>Surviving Paths: <strong style={{ color: "#16a34a" }}>{report.simulation_result?.surviving_paths_count ?? 0}</strong></span>
+          {/* Metrics Strip */}
+          <div
+            style={{
+              padding: "0.6rem 1.25rem",
+              backgroundColor: "var(--bg-primary)",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+              gap: "0.75rem",
+              fontSize: "0.78rem",
+            }}
+          >
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>TOOLS EXECUTED</span>
+              <strong style={{ fontSize: "0.95rem", color: "var(--text-primary)" }}>{report.budget_used}</strong>
+            </div>
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>UPSTREAM CALLERS</span>
+              <strong style={{ fontSize: "0.95rem", color: "var(--accent-blue)" }}>{report.impact_result?.total_impacted_count ?? 0}</strong>
+            </div>
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>DISRUPTED PATHS</span>
+              <strong style={{ fontSize: "0.95rem", color: "#ef4444" }}>{report.simulation_result?.disappeared_paths_count ?? 0}</strong>
+            </div>
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>SURVIVING PATHS</span>
+              <strong style={{ fontSize: "0.95rem", color: "#10b981" }}>{report.simulation_result?.surviving_paths_count ?? 0}</strong>
+            </div>
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>BLAST RADIUS</span>
+              <strong style={{ fontSize: "0.95rem", color: "var(--text-primary)" }}>
+                {report.simulation_result ? `${(report.simulation_result.blast_radius_score * 100).toFixed(1)}%` : "0.0%"}
+              </strong>
+            </div>
+            <div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>LEAD REVIEWER</span>
+              <strong style={{ fontSize: "0.9rem", color: "var(--text-primary)" }}>
+                {report.reviewer_result?.candidates[0]?.name || "None designated"}
+              </strong>
+            </div>
+          </div>
+
+          {/* Summary & Findings Section */}
+          <div style={{ padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: 1.55 }}>
+              {report.summary}
+            </p>
+
+            {/* Approach: Tool Decision Trace Pills */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
+              <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)" }}>Tool Approach:</span>
+              {report.steps.map((st) => (
+                <span
+                  key={st.step_number}
+                  style={{
+                    fontSize: "0.7rem",
+                    padding: "0.15rem 0.45rem",
+                    borderRadius: "4px",
+                    backgroundColor: "var(--bg-secondary)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  #{st.step_number} {st.tool_name.replace(/^nexusact_/, "")}
+                </span>
+              ))}
+            </div>
+
+            {/* Verified Multi-Hop Path Highlight if available */}
+            {activePathNodes.length >= 2 && (
+              <div
+                style={{
+                  marginTop: "0.4rem",
+                  padding: "0.5rem 0.75rem",
+                  backgroundColor: "var(--accent-blue-subtle)",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border-focus)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  fontSize: "0.76rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <strong style={{ color: "var(--accent-blue)" }}>Multi-Hop Graph Path ({activePathNodes.length - 1} hops):</strong>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", flexWrap: "wrap" }}>
+                  {activePathNodes.map((pNode, idx) => (
+                    <React.Fragment key={pNode}>
+                      <span
+                        style={{
+                          backgroundColor: "var(--bg-card)",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: "4px",
+                          padding: "0.15rem 0.4rem",
+                          fontWeight: 600,
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.72rem",
+                        }}
+                      >
+                        {pNode.replace(/^mod:/, "")}
+                      </span>
+                      {idx < activePathNodes.length - 1 && <span>→</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Disclaimer on Structural vs Runtime Evidence */}
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", marginTop: "0.2rem" }}>
+              * Evidence derived from static AST dependency topology, commit history, and counterfactual simulation in FalkorDB. Structural impact predicts call boundaries; runtime testing validates functional behavior.
+            </div>
           </div>
         </div>
       )}
@@ -1083,7 +1253,12 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           disappearedNodeIds={disappearedNodeIds}
           disappearedEdgeIds={disappearedEdgeIds}
           survivingNodeIds={survivingNodeIds}
+          highlightPathNodes={activePathNodes}
           isLoading={isLoading}
+          onSelectTarget={(nodeId) => {
+            setSelectedModule(nodeId);
+            loadGraph(nodeId, selectedRepoId);
+          }}
         />
       )}
 
