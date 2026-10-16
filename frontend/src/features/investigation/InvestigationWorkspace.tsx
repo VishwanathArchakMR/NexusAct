@@ -270,7 +270,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       {/* Repository Scope & Onboarding Banner */}
       <div
         style={{
-          backgroundColor: "#ffffff",
+          backgroundColor: "var(--bg-card)",
           borderRadius: "10px",
           border: "1px solid var(--border-subtle)",
           padding: "1rem 1.25rem",
@@ -423,7 +423,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         >
           <div
             style={{
-              backgroundColor: "#ffffff",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "12px",
               padding: "1.5rem",
               width: "100%",
@@ -562,7 +562,8 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                     padding: "0.5rem 1rem",
                     borderRadius: "6px",
                     border: "1px solid var(--border-subtle)",
-                    backgroundColor: "#ffffff",
+                    backgroundColor: "var(--bg-card)",
+                    color: "var(--text-primary)",
                     fontSize: "0.82rem",
                     cursor: "pointer",
                   }}
@@ -598,7 +599,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       {/* Investigation Controls Card */}
       <div
         style={{
-          backgroundColor: "#ffffff",
+          backgroundColor: "var(--bg-card)",
           borderRadius: "10px",
           border: "1px solid var(--border-subtle)",
           padding: "1.25rem",
@@ -655,7 +656,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 border: "1px solid var(--border-subtle)",
                 fontSize: "0.82rem",
                 color: "var(--text-primary)",
-                backgroundColor: "#ffffff",
+                backgroundColor: "var(--bg-card)",
               }}
             />
           </div>
@@ -680,7 +681,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 border: "1px solid var(--border-subtle)",
                 fontSize: "0.82rem",
                 color: "var(--text-primary)",
-                backgroundColor: "#ffffff",
+                backgroundColor: "var(--bg-card)",
                 fontFamily: "var(--font-mono)",
               }}
             >
@@ -765,8 +766,8 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                   fontSize: "0.78rem",
                   borderRadius: "6px",
                   border: "1px solid #d97706",
-                  backgroundColor: "#ffffff",
-                  color: "#92400e",
+                  backgroundColor: "var(--bg-card)",
+                  color: "#d97706",
                   fontWeight: 600,
                   cursor: "pointer",
                   display: "flex",
@@ -817,10 +818,10 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                       fontSize: "0.75rem",
                       borderRadius: "4px",
                       border: "1px solid #d97706",
-                      backgroundColor: "#ffffff",
+                      backgroundColor: "var(--bg-card)",
                       cursor: "pointer",
                       fontWeight: 600,
-                      color: "#92400e",
+                      color: "#d97706",
                     }}
                   >
                     {c.module_name || c.module_id}
@@ -1282,7 +1283,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       )}
 
       {activeTab === "neighborhood" && (
-        <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--text-primary)" }}>
             1-Hop Neighborhood & Directed Connections
           </h3>
@@ -1329,7 +1330,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                 {report.shortest_path_result.path_nodes.map((node, i) => (
                   <React.Fragment key={node}>
-                    <span style={{ padding: "0.2rem 0.5rem", borderRadius: "4px", backgroundColor: "#ffffff", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+                    <span style={{ padding: "0.2rem 0.5rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
                       {node}
                     </span>
                     {i < report.shortest_path_result!.path_nodes.length - 1 && <span>→</span>}
@@ -1346,7 +1347,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       )}
 
       {activeTab === "provenance" && (
-        <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.5rem", color: "var(--text-primary)" }}>
             Data Source Capabilities & Provenance
           </h3>

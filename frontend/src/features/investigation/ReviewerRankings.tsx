@@ -15,7 +15,7 @@ export const ReviewerRankings: React.FC<ReviewerRankingsProps> = ({ data }) => {
           padding: "1.5rem",
           textAlign: "center",
           color: "var(--text-muted)",
-          backgroundColor: "#ffffff",
+          backgroundColor: "var(--bg-card)",
           borderRadius: "8px",
           border: "1px solid var(--border-subtle)",
           fontSize: "0.85rem",
@@ -33,7 +33,7 @@ export const ReviewerRankings: React.FC<ReviewerRankingsProps> = ({ data }) => {
   return (
     <div
       style={{
-        backgroundColor: "#ffffff",
+        backgroundColor: "var(--bg-card)",
         borderRadius: "8px",
         border: "1px solid var(--border-subtle)",
         overflow: "hidden",
@@ -92,7 +92,7 @@ export const ReviewerRankings: React.FC<ReviewerRankingsProps> = ({ data }) => {
               border: "1px solid var(--border-subtle)",
               borderRadius: "6px",
               padding: "0.75rem",
-              backgroundColor: "#ffffff",
+              backgroundColor: "var(--bg-card)",
             }}
           >
             <div

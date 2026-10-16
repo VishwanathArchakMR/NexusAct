@@ -309,11 +309,11 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
       {/* STEP 3: EXPLICIT INVESTIGATION INPUT SELECTOR */}
       <div
         style={{
-          backgroundColor: "#ffffff",
-          border: "1px solid #cbd5e1",
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
           borderRadius: "10px",
           padding: "1.1rem 1.25rem",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+          boxShadow: "var(--shadow-sm)",
           marginBottom: "1.25rem",
         }}
       >
@@ -443,8 +443,8 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                     padding: "0.15rem 0.45rem",
                     borderRadius: "4px",
                     border: "1px solid #cbd5e1",
-                    backgroundColor: scope === "all" ? "#eff6ff" : "#ffffff",
-                    color: scope === "all" ? "#2563eb" : "#475569",
+                    backgroundColor: scope === "all" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                    color: scope === "all" ? "var(--accent-blue)" : "var(--text-secondary)",
                     cursor: "pointer",
                   }}
                 >
@@ -460,9 +460,9 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                     fontSize: "0.72rem",
                     padding: "0.15rem 0.45rem",
                     borderRadius: "4px",
-                    border: "1px solid #cbd5e1",
-                    backgroundColor: scope === "ai_ecosystem" ? "#eff6ff" : "#ffffff",
-                    color: scope === "ai_ecosystem" ? "#2563eb" : "#475569",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: scope === "ai_ecosystem" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                    color: scope === "ai_ecosystem" ? "var(--accent-blue)" : "var(--text-secondary)",
                     cursor: "pointer",
                   }}
                 >
@@ -478,9 +478,9 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                     fontSize: "0.72rem",
                     padding: "0.15rem 0.45rem",
                     borderRadius: "4px",
-                    border: "1px solid #cbd5e1",
-                    backgroundColor: scope === "research" ? "#eff6ff" : "#ffffff",
-                    color: scope === "research" ? "#2563eb" : "#475569",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: scope === "research" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                    color: scope === "research" ? "var(--accent-blue)" : "var(--text-secondary)",
                     cursor: "pointer",
                   }}
                 >
@@ -508,11 +508,11 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                   style={{
                     padding: "0.35rem 0.75rem",
                     borderRadius: "6px",
-                    border: "1px solid #cbd5e1",
+                    border: "1px solid var(--border-subtle)",
                     fontSize: "0.8rem",
                     fontWeight: 600,
-                    backgroundColor: "#ffffff",
-                    color: "#0f172a",
+                    backgroundColor: "var(--bg-card)",
+                    color: "var(--text-primary)",
                     cursor: "pointer",
                   }}
                 >
@@ -704,11 +704,11 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
           {/* Main Result & Structured Explanation */}
           <div
             style={{
-              backgroundColor: "#ffffff",
-              border: "1px solid #cbd5e1",
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
               borderRadius: "10px",
               padding: "1.25rem 1.5rem",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -875,11 +875,11 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
           {/* Evidence-Backed Relationships Table */}
           <div
             style={{
-              backgroundColor: "#ffffff",
-              border: "1px solid #e2e8f0",
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
               borderRadius: "8px",
               padding: "1.1rem 1.25rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
             <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#1e293b", margin: "0 0 0.85rem 0" }}>
@@ -990,8 +990,8 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
       {/* STEP 4 & STEP 7: INPUT-SCOPED GRAPH VISUALIZATION */}
       <div
         style={{
-          backgroundColor: "#ffffff",
-          border: "1px solid #e2e8f0",
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
           borderRadius: "8px",
           padding: "1.25rem",
           marginBottom: "1.5rem",
@@ -1025,9 +1025,9 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                   fontWeight: 600,
                   padding: "0.3rem 0.65rem",
                   borderRadius: "6px",
-                  border: "1px solid #cbd5e1",
-                  backgroundColor: "#ffffff",
-                  color: "#475569",
+                  border: "1px solid var(--border-subtle)",
+                  backgroundColor: "var(--bg-card)",
+                  color: "var(--text-secondary)",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -1075,9 +1075,9 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                   padding: "0.18rem 0.5rem",
                   borderRadius: "12px",
                   border: "1px solid",
-                  borderColor: selectedTypeFilter === t ? "#2563eb" : "#e2e8f0",
-                  backgroundColor: selectedTypeFilter === t ? "#eff6ff" : "#ffffff",
-                  color: selectedTypeFilter === t ? "#2563eb" : "#475569",
+                  borderColor: selectedTypeFilter === t ? "var(--accent-blue)" : "var(--border-subtle)",
+                  backgroundColor: selectedTypeFilter === t ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                  color: selectedTypeFilter === t ? "var(--accent-blue)" : "var(--text-secondary)",
                   cursor: "pointer",
                 }}
               >
@@ -1134,10 +1134,10 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
                 padding: "0.5rem 1rem",
                 fontSize: "0.8rem",
                 fontWeight: 600,
-                backgroundColor: "#ffffff",
-                border: "1px solid #cbd5e1",
+                backgroundColor: "var(--bg-card)",
+                border: "1px solid var(--border-subtle)",
                 borderRadius: "6px",
-                color: "#2563eb",
+                color: "var(--accent-blue)",
                 cursor: "pointer",
               }}
             >
@@ -1211,11 +1211,11 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
             {(selectedNode || selectedEdge) && (
               <div
                 style={{
-                  border: "1px solid #cbd5e1",
+                  border: "1px solid var(--border-subtle)",
                   borderRadius: "6px",
                   padding: "1rem",
-                  backgroundColor: "#ffffff",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+                  backgroundColor: "var(--bg-card)",
+                  boxShadow: "var(--shadow-sm)",
                 }}
               >
                 {selectedNode && (
@@ -1338,8 +1338,8 @@ export const UniversalDiscoveryWorkspace: React.FC<UniversalDiscoveryWorkspacePr
       {/* Saved Investigations & Memory */}
       <div
         style={{
-          backgroundColor: "#ffffff",
-          border: "1px solid #e2e8f0",
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
           borderRadius: "8px",
           padding: "1.25rem",
         }}

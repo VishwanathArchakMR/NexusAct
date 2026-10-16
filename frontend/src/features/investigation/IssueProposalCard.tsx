@@ -57,7 +57,7 @@ export const IssueProposalCard: React.FC<IssueProposalCardProps> = ({
   return (
     <div
       style={{
-        backgroundColor: "#ffffff",
+        backgroundColor: "var(--bg-card)",
         borderRadius: "8px",
         border: "1px solid var(--border-subtle)",
         overflow: "hidden",

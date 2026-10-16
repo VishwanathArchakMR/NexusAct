@@ -26,7 +26,7 @@ export const App: React.FC = () => {
       {/* Main Mode Navigation Bar */}
       <div
         style={{
-          backgroundColor: "#ffffff",
+          backgroundColor: "var(--bg-secondary)",
           borderBottom: "1px solid var(--border-subtle)",
           padding: "0.4rem 2rem",
         }}

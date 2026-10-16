@@ -145,7 +145,16 @@ def get_graph_subgraph(
     repo_id: Optional[str] = Query(default=None, description="Repository identifier"),
     graph_name: Optional[str] = None,
 ) -> SubgraphResponse:
-    """Returns nodes and edges for visualization canvas rendering."""
+    # Normalize Query parameter objects if function is invoked directly in tests
+    if not isinstance(center_module_id, str):
+        center_module_id = None
+    if not isinstance(depth, int):
+        depth = 2
+    if not isinstance(limit, int):
+        limit = 100
+    if not isinstance(repo_id, str):
+        repo_id = None
+
     target_graph = graph_name
     if not target_graph and repo_id:
         repo_rec = repo_registry.get_repository(repo_id)

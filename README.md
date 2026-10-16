@@ -10,8 +10,14 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-94%2F94%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-101%2F101%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
+
+> **FalkorDB Hackathon Submission**  
+> **Track:** *Agents That Act on Connected Data*  
+> **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
+> **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
+> **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md)  
 
 ---
 
@@ -20,9 +26,9 @@
 **NexusAct** is a graph-native AI engineering agent that investigates software repositories and public knowledge ecosystems as connected graphs.
 
 Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across three first-class input modes:
-1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, and cryptographically verified GitHub action proposals.
+1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, interactive SVG graph explorer, and cryptographically verified GitHub action proposals.
 2. **Universal Public-Data Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
-3. **Input-Driven Universal GAF (Phase 10):**
+3. **Input-Driven Universal GAF:**
    - **Mode A (Public Knowledge):** User question queries approved public connectors and returns query-scoped evidence graphs.
    - **Mode B (Selected Repository):** Route queries directly to isolated repository graphs with AST modules and `DEPENDS_ON` edges.
    - **Mode C (Combined):** Cross-domain dual-source investigation with separate provenance and evidence-backed joins.
@@ -55,12 +61,59 @@ graph TD
     Action -->|Hash Approval & Readback| GitHub[("GitHub API (Sandboxed)")]
 ```
 
-### Graph Model & Canonical Semantics
+### Graph Model & Domain Separation
 
-- **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
-- **Node Labels:** `Repository`, `Module`, `File`, `Person`, `Commit`, `Model`, `Dataset`, `Paper`, `Organization`, `Topic`, `SourceRecord`, `Investigation`, `ToolInvocation`, `Scenario`, `ScenarioResult`, `Action`, `ActionOutcome`.
-- **Relationship Types:** `DEPENDS_ON`, `CONTAINS`, `AUTHORED`, `TOUCHES`, `USES_DATASET`, `CITES`, `AFFILIATED_WITH`, `CREATED_BY`, `HAS_TOPIC`, `FUNDED_BY`, `SUPPORTED_BY`.
+NexusAct maintains strict physical and logical graph isolation in FalkorDB:
+- **Software Codebase Graphs (`nexusact_main`, `repo_*`):**
+  - **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
+  - **Schema:** `Module`, `File`, `Person`, `Commit`.
+- **Public Knowledge Graphs (`nexusact_public`):**
+  - Independent discovery space for AI models, datasets, papers, authors, and organizations.
+  - **Schema:** `Model`, `Dataset`, `Paper`, `Organization`, `Topic`, `SourceRecord`, `Investigation`.
 - **Evidence Provenance:** Edges store `evidence_type` (`observed`, `derived`, `inferred`), `source_file`, confidence (`EXACT`, `HIGH`, `SUPPORTED`), and source provenance URLs.
+
+### Essential Cypher Queries & Graph Algorithms
+
+FalkorDB performs non-trivial, graph-native computation essential to NexusAct:
+
+1. **Reverse Dependency Impact Traversal (Up to 4 Hops):**
+   ```cypher
+   MATCH path = (caller:Module)-[:DEPENDS_ON*1..4]->(target:Module {id: $target_id})
+   RETURN caller.id, caller.name, length(path) AS depth, [r IN relationships(path) | r.id] AS rel_ids
+   ORDER BY depth ASC
+   ```
+
+2. **Multi-Hop Shortest Path Traversal:**
+   ```cypher
+   MATCH path = shortestPath((src:Module {id: $src_id})-[:DEPENDS_ON*]-(dst:Module {id: $dst_id}))
+   RETURN [n IN nodes(path) | n.id] AS path_nodes, [r IN relationships(path) | type(r)] AS rel_types, length(path) AS hops
+   ```
+
+3. **PageRank Structural Centrality:**
+   ```cypher
+   CALL algo.pageRank('Module', 'DEPENDS_ON', {damping: 0.85, iterations: 20})
+   YIELD node, score
+   RETURN node.id AS module_id, node.name AS module_name, score
+   ORDER BY score DESC LIMIT $top_k
+   ```
+
+4. **Counterfactual Simulation via Isolated Clone (`GRAPH.COPY`):**
+   ```cypher
+   GRAPH.COPY nexusact_main scenario_sim_a1b2c3d4
+   // In clone: excises target module and recalculates surviving vs broken paths
+   MATCH (m:Module {id: $target_id}) DETACH DELETE m
+   // Comparison query between baseline and cloned scenario
+   // Clone is guaranteed destroyed in finally block:
+   GRAPH.DELETE scenario_sim_a1b2c3d4
+   ```
+
+5. **Evidence-Based Contributor & Reviewer Expertise (who_knows):**
+   ```cypher
+   MATCH (p:Person)-[:AUTHORED]->(c:Commit)-[:TOUCHES]->(f:File)<-[:CONTAINS]-(m:Module)
+   WHERE m.id IN $affected_modules
+   RETURN p.id, p.name, count(DISTINCT f.id) AS files_touched, count(DISTINCT c.id) AS commits, max(c.timestamp) AS recency
+   ORDER BY files_touched DESC
+   ```
 
 ---
 
@@ -158,9 +211,18 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of 
 
 ## 7. Verification Reports & Demonstration
 
-- **Phase 10 Release & Completion Report:** [`docs/PHASE10_COMPLETION_REPORT.md`](docs/PHASE10_COMPLETION_REPORT.md) — Comprehensive audit, input-driven Universal GAF verification, test results, and release notes.
-- **Phase 9 Completion Report:** [`docs/PHASE9_COMPLETION_REPORT.md`](docs/PHASE9_COMPLETION_REPORT.md) — Universal GAF public-data investigation report.
-- **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script.
-- **Phase 6 Release Verification Report:** [`docs/PHASE6_RELEASE_REPORT.md`](docs/PHASE6_RELEASE_REPORT.md) — Audit trail, CI specifications, test verification, and commit reconciliation.
+- **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md) — Judge-ready final verification, graph-truth audit, test outputs, and hackathon acceptance.
+- **Phase 12 Acceptance Matrix:** [`docs/PHASE12_ACCEPTANCE.md`](docs/PHASE12_ACCEPTANCE.md) — Comprehensive hackathon criteria mapping and verification evidence.
+- **Phase 11 Completion Report:** [`docs/PHASE11_COMPLETION_REPORT.md`](docs/PHASE11_COMPLETION_REPORT.md) — Graph canvas overhaul, clean CI fixtures, question-dependent tool selection, and dual theme.
+- **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script with video recording checklist.
+- **Phase 10 Release Report:** [`docs/PHASE10_COMPLETION_REPORT.md`](docs/PHASE10_COMPLETION_REPORT.md) — Input-driven Universal GAF verification and AST parsing.
 - **Deployment Guide:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Production Compose and cloud hosting analysis.
+
+---
+
+## 8. AI-Assisted Development Disclosure
+
+In accordance with the hackathon rules and transparency standards:
+- **AI Coding Assistant Usage:** Generative AI tools (Google Antigravity IDE agentic workflows) were utilized during the development lifecycle for interactive pair programming, test fixture authoring, AST parser refinement, and documentation scaffolding.
+- **Human Responsibility & Oversight:** The author conceived the system architecture (GraphAction Fabric), designed the FalkorDB graph schema and Cypher query patterns, established the security and cryptographic approval boundaries, debugged execution and rendering failures, verified all automated test suites, and retains full responsibility for the correctness, safety, and integrity of the submitted codebase.
 

@@ -37,7 +37,7 @@ export const CounterfactualDiff: React.FC<CounterfactualDiffProps> = ({
   const hasSurviving = survivingPaths.length > 0;
 
   return (
-    <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
+    <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
       {/* ── Header ── */}
       <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -245,7 +245,7 @@ const emptyStyle: React.CSSProperties = {
   padding: "2rem",
   textAlign: "center",
   color: "var(--text-muted)",
-  backgroundColor: "#ffffff",
+  backgroundColor: "var(--bg-card)",
   borderRadius: "8px",
   border: "1px solid var(--border-subtle)",
 };
@@ -339,7 +339,7 @@ const incompleteBadge: React.CSSProperties = {
 
 const toggleContainerStyle: React.CSSProperties = {
   display: "flex",
-  backgroundColor: "#ffffff",
+  backgroundColor: "var(--bg-muted)",
   padding: "0.15rem",
   borderRadius: "6px",
   border: "1px solid var(--border-subtle)",

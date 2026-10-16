@@ -132,7 +132,56 @@ curl http://localhost:8000/api/v1/health/readiness
 
 ---
 
-## 3. Demonstration Failure & Recovery Scenarios
+---
+
+### Scene 9: Interactive Graph Explorer & Multi-Hop Path Highlight
+
+1. Click on the **"Dependency Graph"** tab in the Software Graph workspace.
+2. **What to highlight to the audience:**
+   - **Visualized Graph (No Blank Canvas):** Real nodes (rectangles with names) and directed dependency edges (arrows in `DEPENDS_ON` direction).
+   - **Three-Region Layout:**
+     - Left: Upstream callers (dependents).
+     - Center: Target focus module.
+     - Right: Downstream dependencies.
+   - **Interactive Pan & Zoom:** Drag the canvas to pan; use wheel or `+`/`-`/`fit-to-view` buttons.
+   - **Contextual Inspector:** Click on any node to slide open the inspector panel displaying ID, in/out degrees, caller lists, and a "Focus Target" button. Click an edge to inspect its source file and evidence type.
+   - **Multi-Hop Path Glow:** The verified multi-hop relationship path (`A -> B -> C -> D`) is illuminated with a glowing stroke and breadcrumb sequence.
+   - **Theme Switcher:** Click the Sun/Moon toggle in the header. Show seamless contrast transition between clean Light mode (default) and dark mode with high contrast SVG labels and panels.
+
+---
+
+### Scene 10: Security Triage Workflow
+
+1. Submit a security-focused prompt:
+   > *"Security triage: what is the blast radius and remediation owners if backend.app.core.config is compromised?"*
+2. **What to highlight to the audience:**
+   - Agent dynamically selects security triage tools: `nexusact_simulate_remove_module` &rarr; `nexusact_trace_impact` &rarr; `nexusact_who_knows`.
+   - Action Proposal automatically generates: `[NexusAct Security Triage] Remediation & blast radius for backend.app.core.config`.
+   - Distinguishes structural blast radius from runtime crash assumptions.
+
+---
+
+## 3. Video Recording Checklist for Submission
+
+Before recording the 3–5 minute hackathon demo video, verify each item:
+
+- [ ] **Resolution & Audio:** 1080p minimum, clear microphone audio, no background noise.
+- [ ] **Track Mention:** Clearly state the hackathon track: **"Agents That Act on Connected Data"** using **FalkorDB v4.4.1**.
+- [ ] **Connected Data First:** Show that the graph data lives in FalkorDB (e.g. mention Cypher queries and persistent storage).
+- [ ] **Flow Order:**
+  1. Quick introduction of NexusAct and the GraphAction Fabric (GAF) architecture (30s).
+  2. Software Graph: Ingest or select repository, ask natural-language question, show First-Class Investigation Summary (45s).
+  3. Interactive Graph Explorer: Pan/zoom canvas, click node to open slide-over inspector, show multi-hop path glow, toggle Light/Dark theme (60s).
+  4. Tool Trace & MCP: Show Agent MCP Trace with dynamic tool selection (30s).
+  5. Counterfactual Simulation: Show baseline vs. removed module blast radius (30s).
+  6. Verified Action: Show evidence-grounded issue proposal with SHA-256 hash and safe approval gate (30s).
+  7. Universal GAF (Brief): Show public data search connecting papers and models with source URLs (30s).
+  8. Conclusion: Reiterate hackathon track and graph-native intelligence (15s).
+- [ ] **No False Claims:** Explicitly note that external GitHub actions require an approved token and are safeguarded by human approval.
+
+---
+
+## 4. Demonstration Failure & Recovery Scenarios
 
 | Scenario | System Reaction | Demonstration Point |
 |---|---|---|
@@ -142,3 +191,5 @@ curl http://localhost:8000/api/v1/health/readiness
 | **Ambiguous Target** | Returns `AMBIGUOUS` with candidate selection chips | AI safety: never acts on ambiguous intent |
 | **Public Source Partial Outage** | Records other sources, isolates failure in `coverage_limitations` | Partial failure tolerance; no cascading crashes |
 | **Restart Recovery** | Graph data in FalkorDB persists across restarts | Persistent relationship engine verification |
+| **Unresolved Target Module** | Returns `UNRESOLVED` with candidate suggestions | Honest truthfulness; no hallucinated graphs |
+
