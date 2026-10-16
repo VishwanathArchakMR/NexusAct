@@ -34,7 +34,7 @@ TypeError: unsupported format string passed to builtin_function_or_method.__form
 ```
 **Traceback & Code Origin:**  
 In `backend/app/sources/graph_persister.py` inside `find_path(...)`:
-```python
+```cypher
 query = f"""
 MATCH p = (s {{id: $start_id}})-[*1..{hops}]-(t {{id: $target_id}})
 RETURN [node in nodes(p) | {
@@ -49,7 +49,7 @@ In Python f-strings, `{ id: node.id, ... }` is evaluated as Python code. Python 
 
 ### Resolution
 Escaped the Cypher map literal braces by doubling them:
-```python
+```cypher
 RETURN [node in nodes(p) | {{
            id: node.id,
            label: coalesce(node.name, node.id),
