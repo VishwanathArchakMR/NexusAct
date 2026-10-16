@@ -10,31 +10,18 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-65%2F65%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-74%2F74%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-8%2F8%20passing-brightgreen)](./frontend/tests)
 
 ---
 
 ## 1. Executive Summary
 
-**NexusAct** is a graph-native AI engineering agent that investigates software repositories as connected graphs.
+**NexusAct** is a graph-native AI engineering agent that investigates software repositories and public knowledge ecosystems as connected graphs.
 
-A user asks:
-> *"If I change this module, which other modules may be affected, who has relevant experience, what happens if the module is removed in a simulated graph, and can you create an issue explaining the findings?"*
-
-NexusAct executes this complete, end-to-end investigation:
-
-1. **Repository Ingestion:** Ingests actual local or public GitHub repositories into FalkorDB via Python AST parsing and Git commit history.
-2. **Reverse Impact Analysis (`trace_impact`):** Traverses upstream reverse-dependencies up to 4 hops (`DependentModule -[:DEPENDS_ON]-> DependencyModule`).
-3. **Reviewer Discovery (`who_knows`):** Computes evidence-backed reviewer rankings with a transparent 4-part scoring formula (files touched, recency, ownership, peer reviews).
-4. **Structural Centrality (`page_rank`):** Identifies structurally influential components using FalkorDB native PageRank (`CALL algo.pageRank('Module', 'DEPENDS_ON')`).
-5. **Counterfactual Simulation (`simulate_remove_module`):** Clones the graph via `GRAPH.COPY`, removes the target module in the temporary copy, computes broken paths and blast radius score, and cleans up.
-6. **Path Verification (`PathVerifier`):** Validates all paths, node/edge IDs, directions, and source file evidence against FalkorDB, emitting `VERIFIED`, `SUPPORTED`, `CONTRADICTED`, or `UNKNOWN`.
-7. **Adaptive MCP Agent:** The agent discovers registered tools over MCP and adaptively selects tools based on intermediate findings, persisting `Investigation` and `ToolInvocation` records in FalkorDB.
-8. **Interactive Frontend:** Renders real dependency graphs, agent tool execution traces, reviewer evidence, counterfactual before/after diffs, and issue proposals.
-9. **Verified GitHub Action:** Generates issue proposals with canonical SHA-256 payload hash binding and idempotency markers (`<!-- GAF-ACTION-MARKER:<hash> -->`).
-10. **Multi-Repository Support:** Register and isolate multiple local or public GitHub repositories into separate FalkorDB graphs (`repo_{slug}`).
-11. **Natural Language Entity Resolution:** Resolves free-text module queries with ambiguity detection and candidate chips when multiple matches exist.
+Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across two first-class domains:
+1. **Software Repository Domain:** AST dependency parsing, bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, and cryptographically verified GitHub action proposals.
+2. **Universal Public-Data Domain (Phase 7):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
 
 ---
 
@@ -44,16 +31,19 @@ NexusAct executes this complete, end-to-end investigation:
 graph TD
     User["User / Engineering Lead"] -->|Question & Target| Workspace["NexusAct Workspace (React 19 + TypeScript)"]
     Workspace -->|HTTP REST| API["FastAPI Backend (v0.2.0)"]
-    API -->|Investigate / Tools| Agent["Adaptive Agent Loop (Planner)"]
-    Agent -->|List / Call Tools| MCP["Model Context Protocol Server (mcp v2.3.0)"]
+    API -->|Repo Investigation| Agent["Adaptive Agent Loop (Planner)"]
+    API -->|Universal Ask GAF| Discovery["Universal Discovery Planner"]
     
-    MCP -->|trace_impact| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
-    MCP -->|who_knows| FalkorDB
-    MCP -->|page_rank| FalkorDB
-    MCP -->|simulate_remove_module| FalkorDB
-    MCP -->|resolve_entity| FalkorDB
-    MCP -->|neighborhood| FalkorDB
-    MCP -->|shortest_path| FalkorDB
+    Agent -->|List / Call Tools| MCP["Model Context Protocol Server (mcp v2.3.0)"]
+    MCP -->|trace_impact / who_knows / simulate| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    
+    Discovery -->|Bounded Search| HF["Hugging Face Hub API"]
+    Discovery -->|Scholarly Works| OA["OpenAlex API"]
+    Discovery -->|DOI Resolution| CR["Crossref REST API"]
+    Discovery -->|QID Exploration| WD["Wikidata Action API"]
+    
+    HF & OA & CR & WD -->|Normalized Records| Persister["PublicGraphPersister"]
+    Persister -->|Idempotent Upsert| FalkorDB
     
     FalkorDB -->|Nodes & Edges| Verifier["PathVerifier (7-point check)"]
     Verifier -->|VERIFIED / SUPPORTED| Action["GitHub Action Service"]
@@ -63,9 +53,9 @@ graph TD
 ### Graph Model & Canonical Semantics
 
 - **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
-- **Node Labels:** `Repository`, `Module`, `File`, `Person`, `Commit`, `Investigation`, `ToolInvocation`, `Scenario`, `ScenarioResult`, `Action`, `ActionOutcome`.
-- **Relationship Types:** `DEPENDS_ON`, `CONTAINS`, `AUTHORED`, `TOUCHES`, `USED_TOOL`, `HAS_SCENARIO`, `CREATED_ACTION`, `HAS_OUTCOME`.
-- **Evidence Provenance:** Edges store `evidence_type` (`observed`, `derived`, `inferred`), `source_file`, and commit references.
+- **Node Labels:** `Repository`, `Module`, `File`, `Person`, `Commit`, `Model`, `Dataset`, `Paper`, `Organization`, `Topic`, `SourceRecord`, `Investigation`, `ToolInvocation`, `Scenario`, `ScenarioResult`, `Action`, `ActionOutcome`.
+- **Relationship Types:** `DEPENDS_ON`, `CONTAINS`, `AUTHORED`, `TOUCHES`, `USES_DATASET`, `CITES`, `AFFILIATED_WITH`, `CREATED_BY`, `HAS_TOPIC`, `FUNDED_BY`, `SUPPORTED_BY`.
+- **Evidence Provenance:** Edges store `evidence_type` (`observed`, `derived`, `inferred`), `source_file`, confidence (`EXACT`, `HIGH`, `SUPPORTED`), and source provenance URLs.
 
 ---
 
@@ -79,8 +69,9 @@ graph TD
 | **Backend** | FastAPI, Pydantic v2, Uvicorn | `0.115+` / `2.14+` |
 | **MCP SDK** | Official Python `mcp` SDK | `2.3.0` |
 | **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
+| **Public Connectors** | Hugging Face, OpenAlex, Crossref, Wikidata | Fixed API Constants |
 | **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
-| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **62/62 python, 8/8 vitest — all clean** |
+| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **74/74 python, 8/8 vitest — all clean** |
 
 ---
 

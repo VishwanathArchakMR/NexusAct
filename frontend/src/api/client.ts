@@ -234,3 +234,46 @@ export async function executeAction(actionId: string, approvedPayloadHash: strin
   });
   return handleResponse<ActionExecutionResult>(res, "Failed to execute action");
 }
+
+// Universal Discovery Endpoints (Phase 7 GAF)
+export async function fetchPublicSources(): Promise<{
+  sources: Record<string, import("../types/discovery").SourceConnectorInfo>;
+  total_connectors: number;
+}> {
+  const url = `${config.apiBaseUrl}/api/v1/discover/sources`;
+  const res = await fetch(url);
+  return handleResponse(res, "Failed to fetch source connectors");
+}
+
+export async function askUniversalGaf(
+  question: string,
+  selectedSources?: string[],
+  maxResults = 5
+): Promise<import("../types/discovery").UniversalInvestigationResult> {
+  const url = `${config.apiBaseUrl}/api/v1/discover/ask-gaf`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      selected_sources: selectedSources,
+      max_results: maxResults,
+    }),
+  });
+  return handleResponse<import("../types/discovery").UniversalInvestigationResult>(
+    res,
+    "Universal Ask GAF investigation failed"
+  );
+}
+
+export async function fetchPublicSubgraph(
+  limit = 50
+): Promise<import("../types/discovery").PublicSubgraphResponse> {
+  const url = `${config.apiBaseUrl}/api/v1/discover/subgraph?limit=${limit}`;
+  const res = await fetch(url);
+  return handleResponse<import("../types/discovery").PublicSubgraphResponse>(
+    res,
+    "Failed to load public knowledge graph"
+  );
+}
+

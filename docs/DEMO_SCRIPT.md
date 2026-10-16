@@ -100,6 +100,38 @@ curl http://localhost:8000/api/v1/health/readiness
 
 ---
 
+### Scene 7: Universal Ask GAF — Multi-Domain Knowledge Discovery
+
+1. In the top navigation bar, click on **"Universal Ask GAF"**.
+2. **What to highlight to the audience:**
+   - **4 Live Approved Connectors:** Hugging Face Hub, OpenAlex Scholarly Graph, Crossref Metadata, and Wikidata. All show real-time health checks.
+   - **Fixed API Base Security:** Connectors use immutable class constants; arbitrary user URLs cannot be fetched.
+3. In the inquiry bar, type:
+   > *"Which organizations publish models related to transformer research?"*
+4. Click **"Investigate"**.
+5. **Observe the Results:**
+   - Universal Discovery Planner selects Hugging Face, OpenAlex, and Wikidata.
+   - Discovers models, creators, papers, and topics with bounded API queries.
+   - Persists all entities idempotently into FalkorDB `nexusact_public`.
+   - Results show exact evidence tags (e.g. `authorships.author`, `tags.dataset`, `claims.P108`).
+   - Every claim features a clickable **Source Record** provenance URL.
+   - Any missing coverage or partial failure is honestly disclosed in the Coverage Limitations box.
+
+---
+
+### Scene 8: AI Ecosystem & Citation Graph Exploration
+
+1. Click on the **"AI Ecosystem"** tab.
+   - Focuses search on models and datasets.
+   - Query: *"Which datasets are documented as used to train open models?"*
+   - Highlights explicit `USES_DATASET` links grounded in metadata tags, strictly avoiding false inferences.
+2. Click on the **"Research & Citations"** tab.
+   - Focuses search on scholarly papers and citation graphs.
+   - Resolves lowercase DOIs across OpenAlex and Crossref to avoid duplicate nodes.
+   - Traverses `CITES` and `AFFILIATED_WITH` relationships to identify academic research clusters.
+
+---
+
 ## 3. Demonstration Failure & Recovery Scenarios
 
 | Scenario | System Reaction | Demonstration Point |
@@ -108,3 +140,5 @@ curl http://localhost:8000/api/v1/health/readiness
 | **Missing Model Credentials** | Switches transparently to deterministic heuristic planner | Resilience: local intelligence never breaks |
 | **FalkorDB Unavailable** | Health API reports `UNHEALTHY` / `NOT_READY` with diagnostics | Honest monitoring; no false green states |
 | **Ambiguous Target** | Returns `AMBIGUOUS` with candidate selection chips | AI safety: never acts on ambiguous intent |
+| **Public Source Partial Outage** | Records other sources, isolates failure in `coverage_limitations` | Partial failure tolerance; no cascading crashes |
+| **Restart Recovery** | Graph data in FalkorDB persists across restarts | Persistent relationship engine verification |

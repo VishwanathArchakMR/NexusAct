@@ -47,7 +47,6 @@ function Write-Fail { param([string]$T) Write-Host "  [FAIL] $T" -ForegroundColo
 
 Write-Step "Detecting Docker execution method..."
 
-$DockerExe = $null
 $DockerMode = $null
 
 # 1a. Docker Desktop native (docker.exe on PATH)
@@ -56,7 +55,6 @@ if ($nativeDocker) {
     try {
         $pingOut = & docker version --format "{{.Server.Version}}" 2>&1
         if ($LASTEXITCODE -eq 0 -and $pingOut -notmatch "error") {
-            $DockerExe = "docker"
             $DockerMode = "DockerDesktop"
             Write-Ok "Docker Desktop is responding (server $pingOut)"
         } else {
@@ -72,9 +70,16 @@ if (-not $DockerMode) {
     Write-Warn "Trying WSL2 Docker daemon fallback..."
     try {
         $wslPing = wsl -d Ubuntu -u root docker version --format "{{.Server.Version}}" 2>&1
+        if ($LASTEXITCODE -ne 0 -or $wslPing -match "error") {
+            Write-Warn "WSL2 Docker service is stopped; attempting to start it..."
+            wsl -d Ubuntu -u root service docker start | Out-Null
+            Start-Sleep -Seconds 2
+            $wslPing = wsl -d Ubuntu -u root docker version --format "{{.Server.Version}}" 2>&1
+        }
         if ($LASTEXITCODE -eq 0 -and $wslPing -notmatch "error") {
-            $DockerExe = "wsl -d Ubuntu -u root docker"
             $DockerMode = "WSL2"
+            # Ensure WSL2 does not terminate when idle
+            Start-Process -FilePath "wsl" -ArgumentList "-d Ubuntu -u root -- /bin/bash -c ""while true; do sleep 3600; done""" -WindowStyle Hidden
             Write-Ok "WSL2 Docker daemon is responding (server $wslPing)"
         } else {
             Write-Warn "WSL2 Docker daemon not responding: $wslPing"
@@ -192,21 +197,23 @@ try {
 } catch { }
 
 if (-not $backendRunning) {
-    $backendLog = "$ProjectRoot\logs\backend.log"
     New-Item -ItemType Directory -Force -Path "$ProjectRoot\logs" | Out-Null
 
-    Get-Job -Name "NexusAct-Backend" -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
+    # Stop any orphan uvicorn processes
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -like "*uvicorn*" -or $_.CommandLine -like "*backend.app.main*"
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-    $backendJob = Start-Job -Name "NexusAct-Backend" -ScriptBlock {
-        param($root)
-        Set-Location $root
-        & .venv\Scripts\uvicorn.exe backend.app.main:app --host 0.0.0.0 --port 8000 --reload 2>&1
-    } -ArgumentList $ProjectRoot
-
-    Start-Sleep -Seconds 3
+    Start-Process -FilePath "$ProjectRoot\.venv\Scripts\python.exe" `
+        -ArgumentList "-m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000" `
+        -WorkingDirectory $ProjectRoot `
+        -RedirectStandardOutput "$ProjectRoot\logs\backend.log" `
+        -RedirectStandardError "$ProjectRoot\logs\backend.err.log" `
+        -WindowStyle Hidden
 
     # Verify backend is listening
-    for ($i = 0; $i -lt 10; $i++) {
+    for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep -Seconds 2
         try {
             $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
@@ -214,13 +221,12 @@ if (-not $backendRunning) {
                 break
             }
         } catch { }
-        Start-Sleep -Seconds 2
     }
 
     if ($backendReady) {
         Write-Ok "FastAPI backend running at http://127.0.0.1:8000"
     } else {
-        Write-Warn "Backend may still be starting (health check timed out)"
+        Write-Warn "Backend health check timed out. Check logs at $ProjectRoot\logs\backend.err.log"
     }
 }
 
@@ -239,16 +245,27 @@ if (-not $SkipFrontend) {
     } catch { }
 
     if (-not $frontendRunning) {
-        Get-Job -Name "NexusAct-Frontend" -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
+        Start-Process -FilePath "cmd.exe" `
+            -ArgumentList "/c npm run dev" `
+            -WorkingDirectory "$ProjectRoot\frontend" `
+            -WindowStyle Hidden
 
-        $frontendJob = Start-Job -Name "NexusAct-Frontend" -ScriptBlock {
-            param($frontendDir)
-            Set-Location $frontendDir
-            & npm run dev 2>&1
-        } -ArgumentList "$ProjectRoot\frontend"
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+                $resp = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 2 -ErrorAction Stop
+                if ($resp.StatusCode -eq 200) {
+                    $frontendRunning = $true
+                    break
+                }
+            } catch { }
+        }
 
-        Start-Sleep -Seconds 3
-        Write-Ok "Frontend Vite server started (http://localhost:5173)"
+        if ($frontendRunning) {
+            Write-Ok "Frontend Vite server started (http://localhost:5173)"
+        } else {
+            Write-Warn "Frontend Vite server may still be starting."
+        }
     }
 }
 

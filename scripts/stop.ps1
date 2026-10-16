@@ -8,11 +8,15 @@ Write-Host "=== Stopping NexusAct Local Services ===" -ForegroundColor Cyan
 Get-Job -Name "NexusAct-Backend", "NexusAct-Frontend" -ErrorAction SilentlyContinue | Stop-Job -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
 
 # Stop FastAPI / Uvicorn processes
-Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*uvicorn*" -or $_.CommandLine -like "*backend.app.main*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { 
+    $_.CommandLine -like "*uvicorn*" -or $_.CommandLine -like "*backend.app.main*" 
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Write-Host "[STOP] Backend FastAPI server stopped." -ForegroundColor Yellow
 
 # Stop Node / Vite dev servers
-Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*vite*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { 
+    $_.CommandLine -like "*vite*" -or $_.CommandLine -like "*npm run dev*"
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Write-Host "[STOP] Frontend Vite server stopped." -ForegroundColor Yellow
 
 # Optionally stop FalkorDB container if requested (NEVER delete volume)

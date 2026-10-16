@@ -24,9 +24,9 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     steps:
       - name: Checkout repository
@@ -53,6 +53,37 @@ jobs:
 
       - name: Mypy Type Check
         run: mypy backend mcp_server
+
+      - name: Wait for FalkorDB module readiness
+        # redis-cli ping succeeds as soon as TCP is up, but FalkorDB's Cypher
+        # module needs several extra seconds to initialise. This step polls with
+        # a real graph query (up to 45 s) before pytest starts.
+        run: |
+          python - <<'EOF'
+          import sys, time
+          try:
+              import falkordb
+          except ImportError:
+              print("falkordb package not found", file=sys.stderr)
+              sys.exit(1)
+          deadline = time.monotonic() + 45
+          last_err = None
+          while time.monotonic() < deadline:
+              try:
+                  db = falkordb.FalkorDB(host="127.0.0.1", port=6379)
+                  db.connection.ping()
+                  g = db.select_graph("_ci_probe")
+                  g.query("RETURN 1")
+                  print("FalkorDB module is ready.")
+                  sys.exit(0)
+              except Exception as e:
+                  last_err = e
+                  remaining = int(deadline - time.monotonic())
+                  print(f"  not ready ({remaining}s left): {e}")
+                  time.sleep(3)
+          print(f"FalkorDB did not become ready within 45 s. Last error: {last_err}", file=sys.stderr)
+          sys.exit(1)
+          EOF
 
       - name: Pytest Suite (All Tests against FalkorDB v4.4.1)
         env:
