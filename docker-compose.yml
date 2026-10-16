@@ -14,7 +14,7 @@ services:
     image: falkordb/falkordb:v4.4.1
     container_name: nexusact_falkordb
     ports:
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
     volumes:
       - nexusact_falkordb_data:/data
     restart: unless-stopped

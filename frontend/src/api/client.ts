@@ -248,7 +248,13 @@ export async function fetchPublicSources(): Promise<{
 export async function askUniversalGaf(
   question: string,
   selectedSources?: string[],
-  maxResults = 5
+  maxResults = 5,
+  options?: {
+    inputMode?: string;
+    repositoryId?: string | null;
+    graphName?: string | null;
+    commitSha?: string | null;
+  }
 ): Promise<import("../types/discovery").UniversalInvestigationResult> {
   const url = `${config.apiBaseUrl}/api/v1/discover/ask-gaf`;
   const res = await fetch(url, {
@@ -258,6 +264,10 @@ export async function askUniversalGaf(
       question,
       selected_sources: selectedSources,
       max_results: maxResults,
+      input_mode: options?.inputMode || "public",
+      repository_id: options?.repositoryId || null,
+      graph_name: options?.graphName || null,
+      commit_sha: options?.commitSha || null,
     }),
   });
   return handleResponse<import("../types/discovery").UniversalInvestigationResult>(

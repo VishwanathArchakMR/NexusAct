@@ -7,14 +7,15 @@ import { SystemStatusDashboard } from "../features/system-status/SystemStatusDas
 import { GitBranch, Globe, Activity } from "lucide-react";
 import "./App.css";
 
-export type AppViewMode = "universal" | "software" | "system";
+export type AppViewMode = "software" | "universal" | "system";
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<AppViewMode>("universal");
+  const [view, setView] = useState<AppViewMode>("software");
+  const [sharedRepoId, setSharedRepoId] = useState<string>("repo:local_nexusact");
 
   const tabs: Array<{ id: AppViewMode; label: string; icon: React.ReactNode }> = [
-    { id: "universal", label: "Universal GAF", icon: <Globe size={14} /> },
     { id: "software", label: "Software Graph", icon: <GitBranch size={14} /> },
+    { id: "universal", label: "Universal GAF", icon: <Globe size={14} /> },
     { id: "system", label: "Diagnostics", icon: <Activity size={14} /> },
   ];
 
@@ -66,8 +67,18 @@ export const App: React.FC = () => {
       </div>
 
       <main className="app-content" style={{ flex: 1 }}>
-        {view === "universal" && <UniversalDiscoveryWorkspace />}
-        {view === "software" && <InvestigationWorkspace />}
+        {view === "software" && (
+          <InvestigationWorkspace
+            selectedRepoId={sharedRepoId}
+            onSelectRepoId={setSharedRepoId}
+          />
+        )}
+        {view === "universal" && (
+          <UniversalDiscoveryWorkspace
+            selectedRepoId={sharedRepoId}
+            onSelectRepoId={setSharedRepoId}
+          />
+        )}
         {view === "system" && <SystemStatusDashboard />}
       </main>
 

@@ -10,7 +10,7 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-87%2F87%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-94%2F94%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
 
 ---
@@ -19,9 +19,14 @@
 
 **NexusAct** is a graph-native AI engineering agent that investigates software repositories and public knowledge ecosystems as connected graphs.
 
-Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across two first-class domains:
-1. **Software Repository Domain:** AST dependency parsing, bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, and cryptographically verified GitHub action proposals.
-2. **Universal Public-Data Domain (Phase 7):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
+Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across three first-class input modes:
+1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, and cryptographically verified GitHub action proposals.
+2. **Universal Public-Data Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
+3. **Input-Driven Universal GAF (Phase 10):**
+   - **Mode A (Public Knowledge):** User question queries approved public connectors and returns query-scoped evidence graphs.
+   - **Mode B (Selected Repository):** Route queries directly to isolated repository graphs with AST modules and `DEPENDS_ON` edges.
+   - **Mode C (Combined):** Cross-domain dual-source investigation with separate provenance and evidence-backed joins.
+   - Primary navigation order: **Software Graph** (default opening workspace) &rarr; **Universal GAF** &rarr; **Diagnostics**.
 
 ---
 
@@ -71,7 +76,7 @@ graph TD
 | **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
 | **Public Connectors** | Hugging Face, OpenAlex, Crossref, Wikidata | Fixed API Constants |
 | **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
-| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **74/74 python, 8/8 vitest — all clean** |
+| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **94/94 python, 13/13 vitest — all clean** |
 
 ---
 
@@ -100,7 +105,7 @@ graph TD
 ### 4. Run Quality & Validation Suite
 
 ```powershell
-# Runs ruff, mypy, pytest (62 tests), oxlint, vitest (8 tests), and production build
+# Runs ruff, mypy, pytest (94 tests), oxlint, vitest (13 tests), and production build
 .\scripts\check.ps1
 ```
 
@@ -153,6 +158,8 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of 
 
 ## 7. Verification Reports & Demonstration
 
+- **Phase 10 Release & Completion Report:** [`docs/PHASE10_COMPLETION_REPORT.md`](docs/PHASE10_COMPLETION_REPORT.md) — Comprehensive audit, input-driven Universal GAF verification, test results, and release notes.
+- **Phase 9 Completion Report:** [`docs/PHASE9_COMPLETION_REPORT.md`](docs/PHASE9_COMPLETION_REPORT.md) — Universal GAF public-data investigation report.
 - **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script.
 - **Phase 6 Release Verification Report:** [`docs/PHASE6_RELEASE_REPORT.md`](docs/PHASE6_RELEASE_REPORT.md) — Audit trail, CI specifications, test verification, and commit reconciliation.
 - **Deployment Guide:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Production Compose and cloud hosting analysis.

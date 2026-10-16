@@ -31,6 +31,14 @@ class AskGafRequest(BaseModel):
     question: str = Field(..., min_length=3, description="Natural language investigation question.")
     selected_sources: list[str] | None = Field(default=None, description="Explicit source IDs to query.")
     max_results: int = Field(default=5, ge=1, le=20, description="Max results per queried source.")
+    input_mode: str = Field(
+        default="public", description="Investigation input mode: 'public', 'repository', or 'combined'."
+    )
+    repository_id: str | None = Field(
+        default=None, description="Target repository ID when input_mode is 'repository' or 'combined'."
+    )
+    graph_name: str | None = Field(default=None, description="FalkorDB graph name for the target repository.")
+    commit_sha: str | None = Field(default=None, description="Source revision / commit SHA for the target repository.")
 
 
 class SearchSourceRequest(BaseModel):
@@ -58,15 +66,28 @@ def list_sources() -> dict[str, Any]:
 
 @router.post("/ask-gaf", response_model=UniversalInvestigationResult)
 def ask_universal_gaf(req: AskGafRequest) -> UniversalInvestigationResult:
-    """Investigates a natural-language public-data question across approved sources."""
+    """Investigates a natural-language question across approved public sources or repository graphs."""
     try:
-        plan = planner.create_plan(req.question)
+        plan = planner.create_plan(
+            question=req.question,
+            input_mode=req.input_mode,
+            repository_id=req.repository_id,
+            graph_name=req.graph_name,
+            commit_sha=req.commit_sha,
+        )
         if req.selected_sources:
             plan.selected_source_ids = req.selected_sources
         if req.max_results:
             plan.max_results_per_source = req.max_results
 
-        result = planner.execute_investigation(req.question, plan_override=plan)
+        result = planner.execute_investigation(
+            req.question,
+            plan_override=plan,
+            input_mode=req.input_mode,
+            repository_id=req.repository_id,
+            graph_name=req.graph_name,
+            commit_sha=req.commit_sha,
+        )
         try:
             persister.save_investigation(
                 investigation_id=result.investigation_id,
@@ -76,6 +97,10 @@ def ask_universal_gaf(req: AskGafRequest) -> UniversalInvestigationResult:
                 sources=result.plan.selected_source_ids,
                 entities=result.entities,
                 next_action=result.next_action,
+                input_mode=result.input_mode,
+                repository_id=result.repository_id,
+                graph_name=result.graph_name,
+                commit_sha=result.commit_sha,
             )
         except Exception as save_exc:
             logger.warning("Could not persist investigation memory: %s", save_exc)

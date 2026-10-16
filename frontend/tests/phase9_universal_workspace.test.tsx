@@ -94,40 +94,67 @@ vi.mock("../src/api/client", () => ({
     status: "CONFIRMED",
     message: "Action confirmed",
   }),
+  fetchRepositories: vi.fn().mockResolvedValue([
+    {
+      id: "repo:local_nexusact",
+      name: "NexusAct",
+      source_type: "local",
+      url_or_path: "C:\\NexusAct",
+      graph_name: "nexusact_main",
+      commit_sha: "6b00a0020c89fe2bb07ec7844fa64af7ce0c8d28",
+      module_count: 56,
+      edge_count: 84,
+      known_gaps: [],
+      parser_warnings: [],
+    },
+  ]),
+  fetchSourceMetadata: vi.fn().mockResolvedValue({
+    repository_id: "repo:local_nexusact",
+    total_commits: 15,
+  }),
+  fetchModules: vi.fn().mockResolvedValue([]),
+  fetchSubgraph: vi.fn().mockResolvedValue({ nodes: [], edges: [], total_nodes: 0, total_edges: 0 }),
 }));
 
-describe("Phase 9 Universal GAF Unified Navigation and Workspace", () => {
-  it("renders exactly 3 top-level navigation tabs and defaults to Universal GAF", async () => {
+describe("Phase 10 Universal GAF Input-Driven Navigation and Workspace", () => {
+  it("renders primary navigation with Software Graph first and default opening workspace", async () => {
     await React.act(async () => {
       render(<App />);
     });
-    expect(screen.getByRole("button", { name: /Universal GAF/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Software Graph/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Diagnostics/i })).toBeDefined();
+    // Check navigation buttons
+    const softwareTab = screen.getByRole("button", { name: /Software Graph/i });
+    const universalTab = screen.getByRole("button", { name: /Universal GAF/i });
+    const diagnosticsTab = screen.getByRole("button", { name: /Diagnostics/i });
 
-    // Redundant top tabs should NOT exist
-    expect(screen.queryByRole("button", { name: /AI Ecosystem/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Research & Citations/i })).toBeNull();
+    expect(softwareTab).toBeDefined();
+    expect(universalTab).toBeDefined();
+    expect(diagnosticsTab).toBeDefined();
 
-    // Default view is Universal Public-Data Discovery
-    expect(screen.getByText(/Universal Public-Data Discovery \(GAF\)/i)).toBeDefined();
+    // Default view is Software Graph workspace
+    expect(screen.getByText(/Dynamic Graph Intelligence Investigation/i)).toBeDefined();
+
+    // Switch to Universal GAF
+    await React.act(async () => {
+      fireEvent.click(universalTab);
+    });
+    expect(screen.getByText(/Universal GraphAction Fabric \(Universal GAF\)/i)).toBeDefined();
   });
 
-  it("renders contextual scope controls and updates scope when clicked", async () => {
+  it("renders explicit input modes and updates mode when clicked", async () => {
     await React.act(async () => {
       render(<UniversalDiscoveryWorkspace />);
     });
-    expect(screen.getByRole("button", { name: /All relevant sources/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /AI models and datasets/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Research papers and citations/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Mode A — Public Knowledge Discovery/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Mode B — Selected Repository/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Mode C — Repository \+ Public Evidence/i })).toBeDefined();
 
-    const aiScopeBtn = screen.getByRole("button", { name: /AI models and datasets/i });
+    const repoModeBtn = screen.getByRole("button", { name: /Mode B — Selected Repository/i });
     await React.act(async () => {
-      fireEvent.click(aiScopeBtn);
+      fireEvent.click(repoModeBtn);
     });
 
-    // Suggested query for AI ecosystem should now appear
-    expect(screen.getByText(/Which datasets are documented as used to train open-source models\?/i)).toBeDefined();
+    // Codebase suggested queries appear
+    expect(screen.getByText(/Which modules depend on the database layer\?/i)).toBeDefined();
   });
 
   it("renders graph memory and confirms action without error", async () => {

@@ -321,10 +321,14 @@ class PublicGraphPersister:
         sources: list[str],
         entities: list[dict[str, Any]],
         next_action: dict[str, Any] | None = None,
+        input_mode: str = "public",
+        repository_id: str | None = None,
+        graph_name: str | None = None,
+        commit_sha: str | None = None,
     ) -> bool:
-        """Persists a completed public-data investigation into FalkorDB as persistent memory."""
+        """Persists a completed investigation into FalkorDB as persistent memory."""
         self.ensure_schema()
-        sources_str = ",".join(sources)
+        sources_str = ",".join(sources) if sources else ""
         act_id = next_action.get("id", "") if next_action else ""
         act_title = next_action.get("title", "") if next_action else ""
         act_desc = next_action.get("description", "") if next_action else ""
@@ -340,6 +344,10 @@ class PublicGraphPersister:
             inv.action_title = $act_title,
             inv.action_desc = $act_desc,
             inv.action_status = $act_status,
+            inv.input_mode = $input_mode,
+            inv.repository_id = $repo_id,
+            inv.graph_name = $graph_name,
+            inv.commit_sha = $commit_sha,
             inv.created_at = coalesce(inv.created_at, $created_at)
         RETURN inv.id
         """
@@ -356,6 +364,10 @@ class PublicGraphPersister:
                     "act_title": act_title,
                     "act_desc": act_desc,
                     "act_status": act_status,
+                    "input_mode": input_mode,
+                    "repo_id": repository_id or "",
+                    "graph_name": graph_name or "",
+                    "commit_sha": commit_sha or "",
                     "created_at": time.time(),
                 },
                 graph_name=self.graph_name,
@@ -379,13 +391,17 @@ class PublicGraphPersister:
             return False
 
     def list_saved_investigations(self, limit: int = 10) -> list[dict[str, Any]]:
-        """Retrieves past public investigations from FalkorDB graph memory."""
+        """Retrieves past investigations from FalkorDB graph memory."""
         self.ensure_schema()
         query = """
         MATCH (inv:PublicInvestigation)
         RETURN inv.id, inv.question, inv.summary, inv.sources, inv.approach,
                inv.action_id, inv.action_title, inv.action_desc, inv.action_status,
-               coalesce(inv.created_at, 0.0) AS created_at
+               coalesce(inv.created_at, 0.0) AS created_at,
+               coalesce(inv.input_mode, 'public') AS input_mode,
+               coalesce(inv.repository_id, '') AS repository_id,
+               coalesce(inv.graph_name, '') AS graph_name,
+               coalesce(inv.commit_sha, '') AS commit_sha
         ORDER BY created_at DESC
         LIMIT $limit
         """
@@ -405,6 +421,10 @@ class PublicGraphPersister:
                         "action_desc": r[7],
                         "action_status": r[8] or "PROPOSED",
                         "created_at": r[9],
+                        "input_mode": r[10],
+                        "repository_id": r[11] or None,
+                        "graph_name": r[12] or None,
+                        "commit_sha": r[13] or None,
                     }
                 )
             return results

@@ -2,6 +2,7 @@
 
 import ast
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -64,13 +65,16 @@ IGNORE_DIRS = {
 }
 
 
+# Supported code extensions for AST/dependency extraction
+SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+
 # Guard bounds for AST ingestion
 MAX_FILES = 2000
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 
 
 class RepositoryAstParser:
-    """Scans and parses a Python repository using the native ast module."""
+    """Scans and parses Python and TypeScript/JavaScript repositories for module & import dependencies."""
 
     def __init__(self, root_path: str):
         self.root_path = Path(root_path).resolve()
@@ -83,13 +87,13 @@ class RepositoryAstParser:
         self.parser_warnings: List[str] = []
 
     def discover_files(self) -> List[Path]:
-        """Discovers all eligible Python source files in the repository with symlink & count bounds."""
-        py_files: List[Path] = []
+        """Discovers all eligible Python and TS/JS source files in the repository with symlink & count bounds."""
+        code_files: List[Path] = []
         for root, dirs, files in os.walk(self.root_path):
             # Prune ignored directories
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
             for file in files:
-                if file.endswith(".py"):
+                if any(file.endswith(ext) for ext in SUPPORTED_EXTENSIONS) and not file.endswith(".d.ts"):
                     full_path = Path(root) / file
                     # Symlink containment check: reject symlinks escaping repository root
                     try:
@@ -106,20 +110,24 @@ class RepositoryAstParser:
                     except (OSError, ValueError):
                         continue
 
-                    if len(py_files) >= MAX_FILES:
+                    if len(code_files) >= MAX_FILES:
                         self.parser_warnings.append(f"Reached maximum file scan limit ({MAX_FILES} files)")
-                        return py_files
+                        return code_files
 
-                    py_files.append(full_path)
-        return py_files
+                    code_files.append(full_path)
+        return code_files
 
     def _path_to_module(self, rel_path: str) -> str:
         """Converts a relative file path to its canonical module namespace."""
         normalized = rel_path.replace("\\", "/").rstrip("/")
         parts = normalized.split("/")
-        if parts[-1].endswith(".py"):
-            parts[-1] = parts[-1][:-3]
-        if parts[-1] == "__init__":
+        last = parts[-1]
+        for ext in (".py", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"):
+            if last.endswith(ext):
+                last = last[: -len(ext)]
+                break
+        parts[-1] = last
+        if parts[-1] in ("__init__", "index") and len(parts) > 1:
             parts = parts[:-1]
         return ".".join(parts) if parts else "root"
 
@@ -132,14 +140,14 @@ class RepositoryAstParser:
         return ".".join(parts[:-1])
 
     def parse_all(self):
-        """Scans and extracts all files, modules, and import dependencies."""
-        py_files = self.discover_files()
+        """Scans and extracts all files, modules, and import dependencies across supported languages."""
+        code_files = self.discover_files()
 
         # Step 1: Catalog all local files and their canonical module names
-        for path in py_files:
+        for path in code_files:
             rel_path = path.relative_to(self.root_path).as_posix()
             mod_name = self._path_to_module(rel_path)
-            is_init = path.name == "__init__.py"
+            is_init = path.name in ("__init__.py", "index.ts", "index.tsx", "index.js", "index.jsx")
             size = path.stat().st_size
 
             self.known_modules.add(mod_name)
@@ -153,7 +161,7 @@ class RepositoryAstParser:
                 is_package_init=is_init,
             )
 
-        # Step 2: Parse AST of each file and extract imports
+        # Step 2: Parse AST / imports of each file
         for rel_path, file_info in self.file_map.items():
             if file_info.size_bytes > MAX_FILE_SIZE_BYTES:
                 self.skipped_files.append(
@@ -165,8 +173,11 @@ class RepositoryAstParser:
             abs_path = self.root_path / rel_path
             try:
                 content = abs_path.read_text(encoding="utf-8", errors="replace")
-                tree = ast.parse(content, filename=str(abs_path))
-                imports = self._extract_imports(tree, rel_path, file_info.module_name)
+                if rel_path.endswith(".py"):
+                    tree = ast.parse(content, filename=str(abs_path))
+                    imports = self._extract_imports(tree, rel_path, file_info.module_name)
+                else:
+                    imports = self._extract_js_ts_imports(content, rel_path, file_info.module_name)
                 file_info.imports = imports
             except Exception as exc:
                 self.skipped_files.append({"file": rel_path, "error": str(exc)})
@@ -175,6 +186,78 @@ class RepositoryAstParser:
 
         # Step 3: Aggregate file-level imports into Module-level dependencies
         self._aggregate_modules()
+
+    def _extract_js_ts_imports(self, content: str, rel_path: str, source_module: str) -> List[ImportRecord]:
+        """Extracts and resolves static and dynamic imports from TypeScript / JavaScript files."""
+        records: List[ImportRecord] = []
+        file_dir = Path(rel_path).parent.as_posix()
+
+        # Strip comments to prevent false matches
+        clean_content = re.sub(r"/\*[\s\S]*?\*/", "", content)
+        clean_content = re.sub(r"//.*$", "", clean_content, flags=re.MULTILINE)
+
+        patterns = [
+            (r"""(?:import|export)\s+(?:[\w*\s{},$]+from\s+)?['"]([^'"]+)['"]""", False),
+            (r"""require\s*\(\s*['"]([^'"]+)['"]\s*\)""", False),
+            (r"""import\s*\(\s*['"]([^'"]+)['"]\s*\)""", True),
+        ]
+
+        seen_targets: Set[str] = set()
+
+        for pattern, is_dynamic in patterns:
+            for match in re.finditer(pattern, clean_content):
+                target_spec = match.group(1).strip()
+                if not target_spec or target_spec in seen_targets:
+                    continue
+                seen_targets.add(target_spec)
+
+                raw_stmt = match.group(0).strip()
+                is_rel = target_spec.startswith(".")
+
+                target_mod: Optional[str] = None
+                target_file: Optional[str] = None
+
+                if is_rel:
+                    base_resolved = (Path(file_dir) / target_spec).as_posix()
+                    norm_path = os.path.normpath(base_resolved).replace("\\", "/")
+                    if norm_path.startswith("./"):
+                        norm_path = norm_path[2:]
+
+                    candidate_keys = [
+                        norm_path,
+                        f"{norm_path}.ts",
+                        f"{norm_path}.tsx",
+                        f"{norm_path}.js",
+                        f"{norm_path}.jsx",
+                        f"{norm_path}/index.ts",
+                        f"{norm_path}/index.tsx",
+                        f"{norm_path}/index.js",
+                        f"{norm_path}/index.jsx",
+                    ]
+                    for c in candidate_keys:
+                        if c in self.file_map:
+                            target_file = c
+                            target_mod = self.file_map[c].module_name
+                            break
+
+                records.append(
+                    ImportRecord(
+                        source_file=rel_path,
+                        source_module=source_module,
+                        raw_statement=raw_stmt,
+                        imported_name=target_spec,
+                        target_module=target_mod,
+                        target_file=target_file,
+                        is_relative=is_rel,
+                        relative_level=1
+                        if target_spec.startswith("./")
+                        else (2 if target_spec.startswith("../") else 0),
+                        is_resolved=bool(target_mod),
+                        is_dynamic=is_dynamic,
+                    )
+                )
+
+        return records
 
     def _extract_imports(self, tree: ast.AST, rel_path: str, source_module: str) -> List[ImportRecord]:
         """Extracts and resolves Import and ImportFrom statements from an AST."""

@@ -40,13 +40,13 @@ async def test_unresolved_target_returns_structured_report():
     assert report.reviewer_result is None
 
 
-def test_empty_python_repo_produces_honest_diagnostic_gap(tmp_path):
-    """Verify that a repository with no .py files explicitly records diagnostic gaps."""
-    # Create a non-Python repository (e.g. React/TypeScript only)
-    repo_dir = tmp_path / "ts_project"
+def test_empty_repo_produces_honest_diagnostic_gap(tmp_path):
+    """Verify that a repository with no supported source files explicitly records diagnostic gaps."""
+    # Create a non-code repository (e.g. docs and json only)
+    repo_dir = tmp_path / "docs_project"
     repo_dir.mkdir()
     (repo_dir / "package.json").write_text('{"name": "test"}', encoding="utf-8")
-    (repo_dir / "App.tsx").write_text("export const App = () => <div>Hello</div>;", encoding="utf-8")
+    (repo_dir / "README.md").write_text("# Documentation", encoding="utf-8")
 
     # Initialize git repo in tmp_path so GitHistoryExtractor works
     subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
@@ -56,12 +56,34 @@ def test_empty_python_repo_produces_honest_diagnostic_gap(tmp_path):
     subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_dir), check=True, capture_output=True)
 
     engine = RepositoryIngestionEngine()
-    result = engine.ingest(repo_path=str(repo_dir), graph_name="nexusact_test_empty_ts")
+    result = engine.ingest(repo_path=str(repo_dir), graph_name="nexusact_test_empty_docs")
 
     assert result.module_count == 0
     assert result.import_edge_count == 0
     # Must explicitly state in data_gaps why 0 modules were found
-    assert any("No supported Python source files" in gap for gap in result.data_gaps)
+    assert any("No supported source files" in gap for gap in result.data_gaps)
+
+
+def test_typescript_repo_extracts_modules_and_dependencies(tmp_path):
+    """Verify that TypeScript/JavaScript modules and dependencies are extracted."""
+    repo_dir = tmp_path / "ts_project"
+    repo_dir.mkdir()
+    (repo_dir / "Button.tsx").write_text("export const Button = () => <button>Click</button>;", encoding="utf-8")
+    (repo_dir / "App.tsx").write_text(
+        'import { Button } from "./Button";\nexport const App = () => <Button />;', encoding="utf-8"
+    )
+
+    subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(repo_dir), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(repo_dir), check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_dir), check=True, capture_output=True)
+
+    engine = RepositoryIngestionEngine()
+    result = engine.ingest(repo_path=str(repo_dir), graph_name="nexusact_test_ts_modules")
+
+    assert result.module_count == 2
+    assert result.import_edge_count >= 1
 
 
 def test_discovery_planner_canonical_doi_deduplication():

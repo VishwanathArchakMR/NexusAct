@@ -261,9 +261,8 @@ class RepositoryIngestionEngine:
 
         if not ast_parser.module_map:
             data_gaps.append(
-                "No supported Python source files (.py) found in repository. "
-                "TypeScript, JavaScript, and non-Python source files are not "
-                "currently parsed into code dependency modules."
+                "No supported source files (.py, .ts, .tsx, .js, .jsx) found in repository. "
+                "Non-supported source files are not currently parsed into code dependency modules."
             )
 
         if ast_parser.skipped_files:

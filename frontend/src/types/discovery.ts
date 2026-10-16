@@ -38,6 +38,10 @@ export interface UniversalInvestigationPlan {
   max_results_per_source: number;
   traversal_depth: number;
   is_heuristic_fallback: boolean;
+  input_mode?: string;
+  repository_id?: string | null;
+  graph_name?: string | null;
+  commit_sha?: string | null;
 }
 
 export interface UniversalInvestigationResult {
@@ -71,6 +75,12 @@ export interface UniversalInvestigationResult {
   } | null;
   coverage_limitations: string[];
   execution_time_ms: number;
+  input_mode?: string;
+  repository_id?: string | null;
+  graph_name?: string | null;
+  commit_sha?: string | null;
+  context?: Record<string, unknown>;
+  scoped_subgraph?: PublicSubgraphResponse;
 }
 
 export interface SavedInvestigation {
@@ -84,6 +94,10 @@ export interface SavedInvestigation {
   action_desc: string;
   action_status: string;
   created_at?: number;
+  input_mode?: string;
+  repository_id?: string | null;
+  graph_name?: string | null;
+  commit_sha?: string | null;
 }
 
 export interface PublicSubgraphResponse {

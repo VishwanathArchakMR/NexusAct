@@ -41,11 +41,25 @@ import {
   Compass,
 } from "lucide-react";
 
-export const InvestigationWorkspace: React.FC = () => {
+export interface InvestigationWorkspaceProps {
+  selectedRepoId?: string;
+  onSelectRepoId?: (id: string) => void;
+}
+
+export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
+  selectedRepoId: propRepoId,
+  onSelectRepoId,
+}) => {
   // Repositories state
   const [repositories, setRepositories] = useState<RepositoryRecord[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<string>("repo:local_nexusact");
+  const [selectedRepoId, setSelectedRepoId] = useState<string>(propRepoId || "repo:local_nexusact");
   const [sourceMetadata, setSourceMetadata] = useState<SourceMetadataOutput | null>(null);
+
+  const [prevPropRepoId, setPrevPropRepoId] = useState(propRepoId);
+  if (propRepoId && propRepoId !== prevPropRepoId) {
+    setPrevPropRepoId(propRepoId);
+    setSelectedRepoId(propRepoId);
+  }
 
   // Onboard repository modal state
   const [showOnboardModal, setShowOnboardModal] = useState<boolean>(false);
@@ -270,6 +284,7 @@ export const InvestigationWorkspace: React.FC = () => {
             onChange={(e) => {
               const newId = e.target.value;
               setSelectedRepoId(newId);
+              onSelectRepoId?.(newId);
               setReport(null);
               setSelectedModule("");
               setError(null);
