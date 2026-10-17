@@ -173,8 +173,9 @@ npm.cmd run build
 ### 5.4 Remote CI Status
 - **Repository:** `VishwanathArchakMR/NexusAct`
 - **Workflow:** NexusAct CI (`.github/workflows/ci.yml`)
-- **Latest Verified Run:** [GitHub Actions Run 38980694735](https://github.com/VishwanathArchakMR/NexusAct/actions/runs/38980694735)
+- **Verified Run for Commit 34d71eb:** [GitHub Actions Run 39013986785](https://github.com/VishwanathArchakMR/NexusAct/actions/runs/39013986785)
 - **Status:** `completed`, Conclusion: `success`
+- **Pre-Phase 14 Baseline Run:** [GitHub Actions Run 38980694735](https://github.com/VishwanathArchakMR/NexusAct/actions/runs/38980694735) (commit `0c95537`)
 
 ---
 
