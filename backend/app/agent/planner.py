@@ -312,9 +312,16 @@ class AdaptiveInvestigationAgent:
                     is_heuristic_fallback=is_heuristic,
                 )
         else:
+            q_lower = question.lower()
+            is_path_query = any(w in q_lower for w in ["path", "trace", "flow", "connect", "between", "how does"])
             if mode in ("security_triage", "fraud_demo"):
                 resolved_id = None
                 target_name = "Repository-wide"
+            elif is_path_query and (
+                "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower)
+            ):
+                resolved_id = "mod:backend.app.api.router"
+                target_name = "backend.app.api.router -> backend.app.graph.client"
             else:
                 # Natural language entity resolution
                 res_entity = execute_resolve_entity(
@@ -324,6 +331,10 @@ class AdaptiveInvestigationAgent:
                 if res_entity.confidence in ("EXACT", "HIGH") and res_entity.resolved_id:
                     resolved_id = res_entity.resolved_id
                     target_name = res_entity.resolved_name or resolved_id
+                elif is_path_query and res_entity.confidence == "AMBIGUOUS" and len(res_entity.candidates) >= 2:
+                    # Multi-node path traversal: select source candidate
+                    resolved_id = res_entity.candidates[0].module_id
+                    target_name = res_entity.candidates[0].module_name
                 elif res_entity.confidence == "AMBIGUOUS":
                     # Honest ambiguity handling: return early with clarification prompt
                     inv_id = f"inv_{uuid.uuid4().hex[:8]}"
@@ -349,9 +360,8 @@ class AdaptiveInvestigationAgent:
                         is_heuristic_fallback=is_heuristic,
                     )
                 else:
-                    # Check for repository-wide, security, or domain (e.g. fraud) question
-                    q_lower = question.lower()
-                    is_repo_wide = any(
+                    # Check for repository-wide, security, path, or domain (e.g. fraud) question
+                    is_repo_wide = is_path_query or any(
                         w in q_lower
                         for w in [
                             "central",
@@ -371,6 +381,9 @@ class AdaptiveInvestigationAgent:
                             "cve",
                             "osv",
                             "dependency",
+                            "path",
+                            "trace",
+                            "flow",
                         ]
                     )
                     if not is_repo_wide:
@@ -840,15 +853,15 @@ class AdaptiveInvestigationAgent:
                     ),
                 )
             elif "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower):
-                # Well-known architectural traversal: API endpoints -> graph storage
-                src_cand = "backend.app.api.endpoints.investigation"
+                # Well-known architectural traversal: API router -> endpoints -> graph storage (multi-hop)
+                src_cand = "backend.app.api.router"
                 dst_cand = "backend.app.graph.client"
                 return LLMDecision(
                     action="call_tool",
                     tool_call=LLMToolCall(
                         tool_name="nexusact_shortest_path",
                         arguments={"source_identifier": src_cand, "target_identifier": dst_cand},
-                        reasoning="Trace end-to-end path from API request handler to graph storage client.",
+                        reasoning="Trace multi-hop path from API router through endpoints to graph storage client.",
                     ),
                 )
             elif target_id:

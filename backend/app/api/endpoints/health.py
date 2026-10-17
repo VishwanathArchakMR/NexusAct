@@ -139,7 +139,12 @@ def get_system_status() -> SystemStatusResponse:
     repos = repo_registry.list_repositories()
     active_repo = repos[0] if repos else None
 
-    llm_has_key = bool(settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    llm_has_key = bool(
+        settings.GEMINI_API_KEY
+        or getattr(settings, "GOOGLE_API_KEY", "")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+    )
     active_provider = get_llm_provider()
     gemini_working = isinstance(active_provider, GeminiProvider) and active_provider.is_available
 
@@ -211,7 +216,12 @@ def get_system_status() -> SystemStatusResponse:
 async def test_llm_connectivity() -> LLMTestResponse:
     """Safe, bounded connectivity test for LLM provider."""
     start = time.perf_counter()
-    has_key = bool(settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    has_key = bool(
+        settings.GEMINI_API_KEY
+        or getattr(settings, "GOOGLE_API_KEY", "")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+    )
 
     if not has_key:
         return LLMTestResponse(
@@ -257,6 +267,8 @@ async def test_llm_connectivity() -> LLMTestResponse:
         safe_msg = str(exc)
         if settings.GEMINI_API_KEY:
             safe_msg = safe_msg.replace(settings.GEMINI_API_KEY, "[REDACTED]")
+        if getattr(settings, "GOOGLE_API_KEY", ""):
+            safe_msg = safe_msg.replace(settings.GOOGLE_API_KEY, "[REDACTED]")
         if os.environ.get("GEMINI_API_KEY"):
             safe_msg = safe_msg.replace(os.environ["GEMINI_API_KEY"], "[REDACTED]")
         if os.environ.get("GOOGLE_API_KEY"):

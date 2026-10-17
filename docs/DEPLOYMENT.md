@@ -141,29 +141,43 @@ railway variables set APP_ENV=production FALKORDB_HOST=... CORS_ORIGINS=...
 
 ---
 
-## 6. Security Hardening Implemented
+---
+
+## 6. Judge Access Architecture & Multi-Tenant Isolation
+
+### 6.1 Evaluator Experience & Sandboxing
+To provide an unconstrained, safe evaluation environment for judges without exposing destructive operations or leaking cross-tenant data:
+1. **Repository/Tenant Graph Isolation**: FalkorDB dynamically allocates physical graphs based on registered repository identifiers (`nexusact_main`, `repo_<slug>`).
+2. **Server-Side Validation**: The API never accepts arbitrary graph names directly from user inputs. Graph names are resolved strictly through `RepositoryRegistry` and validated against `PROTECTED_GRAPHS`.
+3. **Protected System Graphs**: Master codebase graphs and demonstration graphs (`nexusact_main`, `nexusact_fraud_demo`) cannot be dropped, modified, or corrupted by concurrent investigations.
+4. **Isolated Counterfactual Scenarios**: When a judge executes scenario simulations (`simulate_remove_module`), NexusAct creates an ephemeral clone via `GRAPH.COPY scen:<uuid>`. Analysis runs exclusively against the clone, which is guaranteed destroyed in a `finally` block.
+5. **Deterministic Action Approval Gate**: Action proposals generate a canonical SHA-256 payload hash. If GitHub tokens are absent, proposals transition safely to internal `SAVED` state without failing or making unauthorized network requests.
+
+### 6.2 Security Hardening Implemented
 
 | Feature | Implementation |
 |---|---|
-| **CORS** | Explicit origin whitelist; no `*` wildcard |
+| **CORS** | Explicit origin whitelist; no wildcard `*` allowed in production |
 | **TrustedHostMiddleware** | Enabled in `APP_ENV=production`; rejects forged Host headers |
 | **API Docs** | Swagger/ReDoc disabled in production (`APP_ENV=production`) |
 | **Non-root Docker user** | Backend and frontend containers run as `nexusact` (uid/gid: system) |
 | **FalkorDB loopback** | Local: `127.0.0.1:6379` binding; Docker: internal network only |
-| **No dynamic Cypher injection** | All queries use parameterized inputs |
+| **No dynamic Cypher injection** | All queries use parameterized inputs with Pydantic payload validation |
 | **Graph isolation** | Each repo gets dedicated graph (`repo_{slug}`); `PROTECTED_GRAPHS` blocks deletion |
 | **Action hash binding** | Issue proposals require exact SHA-256 hash match before GitHub submission |
+| **Safe API Key Redaction** | Key values are sanitized (`[REDACTED]`) from logs, health probes, and error traces |
 
 ---
 
-## 7. Quality Gates (Phase 16 Final)
+## 7. Quality Gates (Phase 20 Final)
 
-| Suite | Result |
-|---|---|
-| `ruff check .` | ✅ 0 errors |
-| `ruff format --check .` | ✅ Clean formatting |
-| `mypy backend mcp_server` | ✅ 0 errors |
-| `pytest -q` | ✅ **136/136 tests passing** |
-| `oxlint` (frontend) | ✅ 0 errors, 0 warnings |
-| `vitest run` | ✅ **18/18 tests passing** |
-| `tsc -b && vite build` | ✅ Clean build |
+| Suite | Result | Status |
+|---|---|---|
+| `ruff check .` | 0 errors | ✅ PASS |
+| `ruff format --check .` | Clean formatting | ✅ PASS |
+| `mypy backend mcp_server` | 0 errors | ✅ PASS |
+| `pytest -q` | **146/146 tests passing** | ✅ PASS |
+| `npm run lint` (frontend) | 0 errors, 0 warnings | ✅ PASS |
+| `npm test -- --run` (frontend) | **20/20 tests passing** | ✅ PASS |
+| `npm run build` (frontend) | Clean production bundle | ✅ PASS |
+
