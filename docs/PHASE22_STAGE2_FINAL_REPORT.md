@@ -34,6 +34,8 @@
 2. **Wrapped Docstrings**: Refactored the test docstrings to stay strictly below 100 characters per line.
 3. **Repository-Wide Verification**: Executed `ruff check .` across all 140 Python files in the repository (not merely `backend` and `mcp_server`), ensuring 0 errors repository-wide.
 4. **Multi-Repo Regression Coverage**: Added `test_local_nexusact_investigation_workflow` to `tests/integration/test_phase22_stage1_recovery.py` to ensure both foreign repositories (`repo:vishwanatharchakmr_aletheiaos`) and local repositories (`repo:local_nexusact`) run their respective target resolution and shortest path workflows without regression.
+5. **Fixed FalkorDB Cypher String Length Bug**: In `backend/app/agent/planner.py` (lines 912 and 918), Cypher queries used `ORDER BY length(m.name)`. In FalkorDB/Cypher, `length()` operates exclusively on Paths, throwing `Type mismatch: expected Path or Null but was String` when evaluated on string module names. Replaced `length(m.name)` with `size(m.name)`.
+6. **Isolated CI Environment Test Seeding**: Added `seed_test_graphs` autouse fixture in `tests/integration/test_phase22_stage1_recovery.py` to idempotently seed minimal module graphs in FalkorDB when tests execute inside a clean CI container.
 
 ---
 
@@ -160,7 +162,8 @@ To test or present with live Google Gemini AI capabilities:
 
 | File | Substantial Changes Made |
 | :--- | :--- |
-| `tests/integration/test_phase22_stage1_recovery.py` | Fixed Ruff `F401` (unused `settings` import) and `E501` (line-length in docstrings). Added `test_local_nexusact_investigation_workflow` to cover both foreign and local repository shortest-path resolution. |
+| `backend/app/agent/planner.py` | Fixed Cypher `Type mismatch` bug by changing `length(m.name)` to `size(m.name)` for string length sorting, enabling dynamic candidate module discovery in foreign repository graphs. |
+| `tests/integration/test_phase22_stage1_recovery.py` | Fixed Ruff `F401` (unused `settings` import) and `E501` (line-length in docstrings). Added `test_local_nexusact_investigation_workflow` and `seed_test_graphs` fixture to guarantee deterministic CI execution on clean databases. |
 | `.env.example` | Added documentation and safe placeholders for `GOOGLE_API_KEY` alongside `GEMINI_API_KEY`, frontend API base URLs, and FalkorDB connection variables. |
 | `docs/FINAL_DEMO_CHECKLIST.md` | Authored comprehensive pre-demo verification checklist covering startup, database health, provider status, end-to-end investigation, and failure handling. |
 | `docs/PHASE22_STAGE2_FINAL_REPORT.md` | Created Phase 22 Stage 2 final report documenting CI fixes, runtime verification, test matrices, and demo readiness. |

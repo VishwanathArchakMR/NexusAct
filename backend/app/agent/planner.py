@@ -909,13 +909,13 @@ class AdaptiveInvestigationAgent:
                     target_g = graph_name or "nexusact_main"
                     try:
                         api_rows = self.client.query(
-                            "MATCH (m:Module) WHERE m.name CONTAINS 'api' RETURN m.id ORDER BY length(m.name) LIMIT 1",
+                            "MATCH (m:Module) WHERE m.name CONTAINS 'api' RETURN m.id ORDER BY size(m.name) LIMIT 1",
                             graph_name=target_g,
                         )
                         storage_rows = self.client.query(
                             "MATCH (m:Module) WHERE m.name CONTAINS 'graph' OR "
                             "m.name CONTAINS 'storage' OR m.name CONTAINS 'repository' "
-                            "RETURN m.id ORDER BY length(m.name) LIMIT 1",
+                            "RETURN m.id ORDER BY size(m.name) LIMIT 1",
                             graph_name=target_g,
                         )
                         src_cand = api_rows[0][0] if api_rows else "api"

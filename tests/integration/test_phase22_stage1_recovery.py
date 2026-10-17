@@ -21,6 +21,39 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def seed_test_graphs():
+    """Ensure minimal module graphs exist in FalkorDB for tests running in CI on empty databases."""
+    alethe_graph = "repo_vishwanatharchakmr_alethe"
+    try:
+        res_alethe = graph_client.query("MATCH (m:Module) RETURN count(m)", graph_name=alethe_graph)
+        if not res_alethe or res_alethe[0][0] == 0:
+            graph_client.query(
+                """
+                MERGE (m1:Module {id: 'mod:frontend.src.lib.api', name: 'frontend.src.lib.api'})
+                MERGE (m2:Module {id: 'mod:backend.app.graph.client', name: 'backend.app.graph.client'})
+                MERGE (m1)-[:DEPENDS_ON]->(m2)
+                """,
+                graph_name=alethe_graph,
+            )
+    except Exception:
+        pass
+
+    try:
+        res_nexus = graph_client.query("MATCH (m:Module) RETURN count(m)", graph_name="nexusact_main")
+        if not res_nexus or res_nexus[0][0] == 0:
+            graph_client.query(
+                """
+                MERGE (m1:Module {id: 'mod:backend.app.api.router', name: 'backend.app.api.router'})
+                MERGE (m2:Module {id: 'mod:backend.app.graph.client', name: 'backend.app.graph.client'})
+                MERGE (m1)-[:DEPENDS_ON]->(m2)
+                """,
+                graph_name="nexusact_main",
+            )
+    except Exception:
+        pass
+
+
 @pytest.mark.asyncio
 async def test_selected_repository_target_resolution_and_path_traversal():
     """Verify that investigating AletheiaOS resolves real modules in AletheiaOS
