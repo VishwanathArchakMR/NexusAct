@@ -15,8 +15,8 @@ import {
   Terminal,
   Activity,
 } from "lucide-react";
-import { fetchReadiness, fetchSystemStatus } from "../../api/client";
-import type { ReadinessData, SystemStatusData } from "../../types/system";
+import { fetchReadiness, fetchSystemStatus, testLLMConnectivity } from "../../api/client";
+import type { ReadinessData, SystemStatusData, LLMTestResult } from "../../types/system";
 import { DiagnosticCard } from "./DiagnosticCard";
 
 export const SystemStatusDashboard: React.FC = () => {
@@ -25,6 +25,8 @@ export const SystemStatusDashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>("");
+  const [testingLLM, setTestingLLM] = useState<boolean>(false);
+  const [llmTestResult, setLlmTestResult] = useState<LLMTestResult | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -221,16 +223,31 @@ export const SystemStatusDashboard: React.FC = () => {
         />
 
         <DiagnosticCard
-          title="MCP & Action Engine"
-          subtitle="Tools & Safeguards"
-          status={statusData?.mcp_server_configured ? "HEALTHY" : "DEGRADED"}
+          title="Intelligence & Safeguards"
+          subtitle="Agent Planning & Explanations"
+          status={
+            statusData?.planner_provider === "GEMINI_ACTIVE"
+              ? "HEALTHY"
+              : statusData?.planner_provider === "FALLBACK_ACTIVE"
+              ? "READY"
+              : "DEGRADED"
+          }
           icon={Cpu}
           iconColor="#8b5cf6"
           details={[
-            { label: "Registered Tools", value: "nexusact_diagnose_graph" },
-            { label: "Action Policy", value: statusData?.action_approval_required ? "Manual Approval" : "Auto" },
-            { label: "Reasoning Engine", value: statusData?.llm_configured ? "Google Gemini" : "Heuristic Rule" },
-            { label: "Credentials", value: statusData?.llm_configured ? "Server-side Key" : "No Key (Safe)" },
+            { label: "Agent Planning", value: statusData?.planner_provider || "FALLBACK_ACTIVE" },
+            { label: "Explanation Engine", value: statusData?.explanation_provider || "FALLBACK_ACTIVE" },
+            { label: "Active Model", value: statusData?.planner_model || "deterministic-rule-engine" },
+            {
+              label: "Credentials",
+              value: statusData?.credentials_detected
+                ? "Server-side Key Active"
+                : "Not Configured (Safe Fallback)",
+            },
+            {
+              label: "Action Safeguard",
+              value: statusData?.action_approval_required ? "Manual Approval Enforced" : "Automatic",
+            },
           ]}
         />
       </div>
@@ -393,12 +410,12 @@ export const SystemStatusDashboard: React.FC = () => {
                 </td>
               </tr>
 
-              <tr>
+              <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <td style={{ padding: "0.7rem 0.75rem", fontWeight: 600, color: "var(--text-primary)" }}>
-                  Reasoning & Planning Engine
+                  Agent Planning (Tool Selection)
                 </td>
                 <td style={{ padding: "0.7rem 0.75rem", color: "var(--text-secondary)" }}>
-                  Translates natural language questions into graph traversals and counterfactual plans
+                  Autonomous multi-step MCP tool selection loop for codebase & fraud investigations
                 </td>
                 <td style={{ padding: "0.7rem 0.75rem" }}>
                   <span style={{
@@ -409,22 +426,171 @@ export const SystemStatusDashboard: React.FC = () => {
                     borderRadius: "4px",
                     fontWeight: 700,
                     fontSize: "0.72rem",
-                    backgroundColor: statusData?.llm_configured ? "var(--status-verified-bg)" : "var(--status-unknown-bg)",
-                    color: statusData?.llm_configured ? "var(--status-verified-text)" : "var(--status-unknown-text)",
+                    backgroundColor:
+                      statusData?.planner_provider === "GEMINI_ACTIVE"
+                        ? "var(--status-verified-bg)"
+                        : statusData?.planner_provider === "FALLBACK_ACTIVE"
+                        ? "var(--accent-blue-subtle)"
+                        : "var(--status-unknown-bg)",
+                    color:
+                      statusData?.planner_provider === "GEMINI_ACTIVE"
+                        ? "var(--status-verified-text)"
+                        : statusData?.planner_provider === "FALLBACK_ACTIVE"
+                        ? "var(--accent-blue)"
+                        : "var(--status-unknown-text)",
                   }}>
-                    {statusData?.llm_configured ? <CheckCircle2 size={12} /> : <HelpCircle size={12} />}
-                    {statusData?.llm_configured ? "CONFIGURED (GEMINI)" : "HEURISTIC (RULE-BASED)"}
+                    {statusData?.planner_provider === "GEMINI_ACTIVE" ? (
+                      <CheckCircle2 size={12} />
+                    ) : (
+                      <HelpCircle size={12} />
+                    )}
+                    {statusData?.planner_provider || "FALLBACK_ACTIVE"}
                   </span>
                 </td>
                 <td style={{ padding: "0.7rem 0.75rem", fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-                  {statusData?.llm_provider || "Heuristic Engine"}
+                  {statusData?.planner_model || "deterministic-rule-engine"}
                 </td>
                 <td style={{ padding: "0.7rem 0.75rem", color: "var(--text-muted)" }}>
-                  Deterministic heuristic fallback operates even with zero external API keys
+                  Bounded deterministic heuristic chain when external API is absent or unreachable
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ padding: "0.7rem 0.75rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                  Explanation Generation (Insights)
+                </td>
+                <td style={{ padding: "0.7rem 0.75rem", color: "var(--text-secondary)" }}>
+                  Evidence-grounded structured analysis and takeaways across all 10 workspace panels
+                </td>
+                <td style={{ padding: "0.7rem 0.75rem" }}>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "4px",
+                    fontWeight: 700,
+                    fontSize: "0.72rem",
+                    backgroundColor:
+                      statusData?.explanation_provider === "GEMINI_ACTIVE"
+                        ? "var(--status-verified-bg)"
+                        : statusData?.explanation_provider === "FALLBACK_ACTIVE"
+                        ? "var(--accent-blue-subtle)"
+                        : "var(--status-unknown-bg)",
+                    color:
+                      statusData?.explanation_provider === "GEMINI_ACTIVE"
+                        ? "var(--status-verified-text)"
+                        : statusData?.explanation_provider === "FALLBACK_ACTIVE"
+                        ? "var(--accent-blue)"
+                        : "var(--status-unknown-text)",
+                  }}>
+                    {statusData?.explanation_provider === "GEMINI_ACTIVE" ? (
+                      <CheckCircle2 size={12} />
+                    ) : (
+                      <HelpCircle size={12} />
+                    )}
+                    {statusData?.explanation_provider || "FALLBACK_ACTIVE"}
+                  </span>
+                </td>
+                <td style={{ padding: "0.7rem 0.75rem", fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+                  {statusData?.explanation_model || "deterministic-grounding"}
+                </td>
+                <td style={{ padding: "0.7rem 0.75rem", color: "var(--text-muted)" }}>
+                  Deterministic FalkorDB graph evidence facts and LRU cache
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        {/* LLM Connectivity Check Action Bar */}
+        <div
+          style={{
+            marginTop: "0.5rem",
+            padding: "0.85rem 1rem",
+            backgroundColor: "var(--bg-secondary)",
+            borderRadius: "6px",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+          }}
+        >
+          <div>
+            <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)" }}>
+              Provider Connectivity Verification
+            </span>
+            <p style={{ margin: "0.15rem 0 0 0", fontSize: "0.76rem", color: "var(--text-secondary)" }}>
+              Safely test server-side LLM connectivity with bounded 5s timeout. Secrets are never exposed.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {llmTestResult && (
+              <span
+                style={{
+                  fontSize: "0.74rem",
+                  padding: "0.2rem 0.55rem",
+                  borderRadius: "4px",
+                  fontWeight: 600,
+                  backgroundColor:
+                    llmTestResult.status === "GEMINI_ACTIVE"
+                      ? "var(--status-verified-bg)"
+                      : llmTestResult.status === "NOT_CONFIGURED"
+                      ? "var(--accent-blue-subtle)"
+                      : "var(--status-contradicted-bg)",
+                  color:
+                    llmTestResult.status === "GEMINI_ACTIVE"
+                      ? "var(--status-verified-text)"
+                      : llmTestResult.status === "NOT_CONFIGURED"
+                      ? "var(--accent-blue)"
+                      : "var(--status-contradicted-text)",
+                }}
+              >
+                {llmTestResult.status}: {llmTestResult.message} ({llmTestResult.latency_ms}ms)
+              </span>
+            )}
+
+            <button
+              onClick={async () => {
+                setTestingLLM(true);
+                try {
+                  const res = await testLLMConnectivity();
+                  setLlmTestResult(res);
+                } catch (e: any) {
+                  setLlmTestResult({
+                    status: "PROVIDER_UNAVAILABLE",
+                    provider: "Unknown",
+                    model: "none",
+                    latency_ms: 0,
+                    message: e?.message || "Check failed",
+                    credentials_detected: false,
+                  });
+                } finally {
+                  setTestingLLM(false);
+                }
+              }}
+              disabled={testingLLM}
+              style={{
+                padding: "0.35rem 0.75rem",
+                borderRadius: "5px",
+                border: "1px solid var(--border-subtle)",
+                backgroundColor: "var(--bg-card)",
+                color: "var(--text-primary)",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+              }}
+            >
+              <RefreshCw size={12} className={testingLLM ? "spin" : ""} />
+              {testingLLM ? "Testing Provider..." : "Test LLM Connectivity"}
+            </button>
+          </div>
         </div>
       </div>
 

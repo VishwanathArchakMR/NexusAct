@@ -115,7 +115,12 @@ def test_phase10_test_c_investigation_scoped_public_graphs() -> None:
     assert len(scoped_nodes) <= 50, f"Expected bounded scoped nodes, got {len(scoped_nodes)}"
 
     # Check that persister global subgraph still retains full corpus
+    from backend.app.graph.client import graph_client
+    from tests.fixtures.synthetic_graph import seed_public_corpus_fixture
+
     persister = PublicGraphPersister()
+    # Ensure baseline public corpus is seeded if running on a fresh CI database instance
+    seed_public_corpus_fixture(graph_client, persister.graph_name)
     corpus = persister.get_subgraph(limit=100)
     assert len(corpus["nodes"]) >= 20, "Persistent public corpus should remain intact in FalkorDB"
 

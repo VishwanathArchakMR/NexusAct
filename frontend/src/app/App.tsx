@@ -1,24 +1,42 @@
 import React, { useState } from "react";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
-import { InvestigationWorkspace } from "../features/investigation/InvestigationWorkspace";
-import { UniversalDiscoveryWorkspace } from "../features/discovery/UniversalDiscoveryWorkspace";
+import {
+  InvestigationWorkspace,
+  type InvestigationMode,
+  type InvestigationWorkspaceTab,
+} from "../features/investigation/InvestigationWorkspace";
+import { InvestigationCenter } from "../features/investigation/InvestigationCenter";
 import { SystemStatusDashboard } from "../features/system-status/SystemStatusDashboard";
-import { GitBranch, Globe, Activity } from "lucide-react";
+import { GitBranch, Compass, Activity } from "lucide-react";
 import "./App.css";
 
-export type AppViewMode = "software" | "universal" | "system";
+export type AppViewMode = "software" | "investigation" | "system";
 
 export const App: React.FC = () => {
   const [view, setView] = useState<AppViewMode>("software");
   const [sharedRepoId, setSharedRepoId] = useState<string>("repo:local_nexusact");
+  const [initialMode, setInitialMode] = useState<InvestigationMode>("codebase_walkthrough");
+  const [initialTab, setInitialTab] = useState<InvestigationWorkspaceTab>("graph");
 
   const tabs: Array<{ id: AppViewMode; label: string; icon: React.ReactNode }> = [
     { id: "software", label: "Software Graph", icon: <GitBranch size={14} /> },
-    { id: "universal", label: "Agent Investigation (Universal GAF)", icon: <Globe size={14} /> },
+    { id: "investigation", label: "Investigation Center", icon: <Compass size={14} /> },
     { id: "system", label: "Diagnostics", icon: <Activity size={14} /> },
-
   ];
+
+  const handleLaunchWorkflow = (
+    mode: InvestigationMode,
+    tab: InvestigationWorkspaceTab,
+    repoId?: string
+  ) => {
+    if (repoId) {
+      setSharedRepoId(repoId);
+    }
+    setInitialMode(mode);
+    setInitialTab(tab);
+    setView("software");
+  };
 
   return (
     <div className="app-layout" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -72,12 +90,15 @@ export const App: React.FC = () => {
           <InvestigationWorkspace
             selectedRepoId={sharedRepoId}
             onSelectRepoId={setSharedRepoId}
+            initialMode={initialMode}
+            initialTab={initialTab}
           />
         )}
-        {view === "universal" && (
-          <UniversalDiscoveryWorkspace
+        {view === "investigation" && (
+          <InvestigationCenter
             selectedRepoId={sharedRepoId}
             onSelectRepoId={setSharedRepoId}
+            onLaunchWorkflow={handleLaunchWorkflow}
           />
         )}
         {view === "system" && <SystemStatusDashboard />}

@@ -264,3 +264,107 @@ def seed_typescript_fixture(client: FalkorDBClient, graph_name: str = TYPESCRIPT
         "module_count": report.module_count,
         "edge_count": report.import_edge_count,
     }
+
+
+def seed_public_corpus_fixture(client: FalkorDBClient, graph_name: str = "nexusact_public") -> Dict[str, int]:
+    """Seeds a deterministic set of at least 25 public entities in the public graph for isolated testing."""
+    from backend.app.graph.initialization import initialize_schema
+
+    initialize_schema(client=client, graph_name=graph_name)
+
+    # Check if graph already has 25+ nodes
+    try:
+        res = client.query("MATCH (n) RETURN count(n) AS cnt", graph_name=graph_name)
+        cnt = res[0][0] if res and len(res) > 0 else 0
+        if cnt >= 25:
+            return {"nodes": cnt}
+    except Exception:
+        pass
+
+    # Deterministic public entities across Model, Dataset, Paper, Person, Organization
+    entities = [
+        {"id": "hf:meta-llama/Llama-3-8B", "name": "Llama-3-8B", "type": "Model", "source": "huggingface"},
+        {"id": "hf:mistralai/Mistral-7B-v0.1", "name": "Mistral-7B-v0.1", "type": "Model", "source": "huggingface"},
+        {"id": "hf:google/gemma-7b", "name": "gemma-7b", "type": "Model", "source": "huggingface"},
+        {"id": "hf:tiiuae/falcon-7b", "name": "falcon-7b", "type": "Model", "source": "huggingface"},
+        {"id": "hf:microsoft/phi-2", "name": "phi-2", "type": "Model", "source": "huggingface"},
+        {"id": "hf:dataset/squad", "name": "SQuAD", "type": "Dataset", "source": "huggingface"},
+        {"id": "hf:dataset/glue", "name": "GLUE", "type": "Dataset", "source": "huggingface"},
+        {"id": "hf:dataset/common_voice", "name": "Common Voice", "type": "Dataset", "source": "huggingface"},
+        {"id": "hf:dataset/imdb", "name": "IMDb", "type": "Dataset", "source": "huggingface"},
+        {"id": "hf:dataset/c4", "name": "C4 Corpus", "type": "Dataset", "source": "huggingface"},
+        {"id": "openalex:W2741809807", "name": "Attention Is All You Need", "type": "Paper", "source": "openalex"},
+        {
+            "id": "openalex:W2963403868",
+            "name": "BERT: Pre-training of Deep Bidirectional Transformers",
+            "type": "Paper",
+            "source": "openalex",
+        },
+        {
+            "id": "openalex:W3101004128",
+            "name": "Language Models are Few-Shot Learners",
+            "type": "Paper",
+            "source": "openalex",
+        },
+        {
+            "id": "openalex:W2145742810",
+            "name": "Deep Residual Learning for Image Recognition",
+            "type": "Paper",
+            "source": "openalex",
+        },
+        {
+            "id": "openalex:W2165682855",
+            "name": "Adam: A Method for Stochastic Optimization",
+            "type": "Paper",
+            "source": "openalex",
+        },
+        {"id": "crossref:10.1145/3065386", "name": "Deep Learning Review", "type": "Paper", "source": "crossref"},
+        {"id": "crossref:10.1038/nature14539", "name": "Deep Learning Nature", "type": "Paper", "source": "crossref"},
+        {"id": "openalex:A5023880391", "name": "Ashish Vaswani", "type": "Person", "source": "openalex"},
+        {"id": "openalex:A5086877903", "name": "Noam Shazeer", "type": "Person", "source": "openalex"},
+        {"id": "openalex:A5003442461", "name": "Yoshua Bengio", "type": "Person", "source": "openalex"},
+        {"id": "openalex:A5017721245", "name": "Geoffrey Hinton", "type": "Person", "source": "openalex"},
+        {"id": "openalex:A5034442129", "name": "Yann LeCun", "type": "Person", "source": "openalex"},
+        {"id": "wikidata:Q95", "name": "Google", "type": "Organization", "source": "wikidata"},
+        {"id": "wikidata:Q2283", "name": "Microsoft", "type": "Organization", "source": "wikidata"},
+        {"id": "wikidata:Q380", "name": "Meta", "type": "Organization", "source": "wikidata"},
+    ]
+
+    for ent in entities:
+        lbl = ent["type"]
+        client.query(
+            f"""
+            MERGE (n:{lbl} {{id: $id}})
+            SET n.name = $name,
+                n.type = $type,
+                n.source = $source,
+                n.domain = 'public'
+            RETURN count(n)
+            """,
+            params={"id": ent["id"], "name": ent["name"], "type": ent["type"], "source": ent["source"]},
+            graph_name=graph_name,
+        )
+
+    # Relationships
+    rels = [
+        ("openalex:A5023880391", "AUTHORED", "openalex:W2741809807"),
+        ("openalex:A5086877903", "AUTHORED", "openalex:W2741809807"),
+        ("hf:meta-llama/Llama-3-8B", "TRAINED_ON", "hf:dataset/c4"),
+        ("openalex:W2963403868", "CITES", "openalex:W2741809807"),
+        ("openalex:W3101004128", "CITES", "openalex:W2741809807"),
+    ]
+    for src, rel_type, tgt in rels:
+        client.query(
+            f"""
+            MATCH (a {{id: $src}}), (b {{id: $tgt}})
+            MERGE (a)-[r:{rel_type}]->(b)
+            SET r.provenance = 'curated'
+            RETURN count(r)
+            """,
+            params={"src": src, "tgt": tgt},
+            graph_name=graph_name,
+        )
+
+    res = client.query("MATCH (n) RETURN count(n) AS cnt", graph_name=graph_name)
+    total = res[0][0] if res and len(res) > 0 else len(entities)
+    return {"nodes": total}

@@ -37,6 +37,14 @@ vi.mock("../src/api/client", () => ({
     database: { connected: true, host: "127.0.0.1", port: 6379, graph: "nexusact_main" },
     schema_version: "1.0.0",
   }),
+  testLLMConnectivity: vi.fn().mockResolvedValue({
+    status: "FALLBACK_ACTIVE",
+    provider: "Deterministic Rule Engine",
+    model: "deterministic-rule-engine",
+    latency_ms: 0,
+    message: "Rule-based fallback active",
+    credentials_detected: false,
+  }),
 }));
 
 describe("Frontend Foundation UI Components", () => {

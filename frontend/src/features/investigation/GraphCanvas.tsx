@@ -79,7 +79,20 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState<boolean>(false);
 
-  const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Individual node dragging state & offsets
+  const [draggedNodeOffsets, setDraggedNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const dragPointerInfoRef = useRef<{
+    nodeId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    initialOffset: { x: number; y: number };
+    hasMoved: boolean;
+  } | null>(null);
+
+  const isPanningRef = useRef<boolean>(false);
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Interactive selection & filtering
   const [selectedNode, setSelectedNode] = useState<LayoutNode | null>(null);
@@ -102,6 +115,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     setZoom(1.0);
     setSelectedNode(null);
     setSelectedEdge(null);
+    setDraggedNodeOffsets({});
   }
 
   // Compute Layout & Coordinates
@@ -409,52 +423,175 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     graphViewMode,
   ]);
 
-  // Viewport interactions: mouse dragging
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    // Only pan if clicking canvas background (not on node/edge directly)
-    if ((e.target as HTMLElement).tagName === "svg" || (e.target as HTMLElement).tagName === "rect") {
-      setIsPanning(true);
-      setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  // ── Background Panning via Pointer Events ──
+  const handleBackgroundPointerDown = (e: React.PointerEvent<SVGRectElement>) => {
+    if (e.button !== 0) return;
+    isPanningRef.current = true;
+    panStartRef.current = {
+      x: e.clientX - pan.x,
+      y: e.clientY - pan.y,
+    };
+    setIsPanning(true);
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (isPanning) {
-      setPan({
-        x: e.clientX - startPan.x,
-        y: e.clientY - startPan.y,
-      });
+  const handleBackgroundPointerMove = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!isPanningRef.current) return;
+    setPan({
+      x: e.clientX - panStartRef.current.x,
+      y: e.clientY - panStartRef.current.y,
+    });
+  };
+
+  const handleBackgroundPointerUp = (e: React.PointerEvent<SVGRectElement>) => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      setIsPanning(false);
+      try {
+        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
     }
   };
 
-  const handleMouseUp = () => setIsPanning(false);
+  // ── Individual Node Dragging via Pointer Events ──
+  const handleNodePointerDown = (e: React.PointerEvent<SVGGElement>, nodeId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
 
-  // Smooth non-passive wheel zoom
+    const currentOffset = draggedNodeOffsets[nodeId] || { x: 0, y: 0 };
+    dragPointerInfoRef.current = {
+      nodeId,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialOffset: { ...currentOffset },
+      hasMoved: false,
+    };
+    setDraggingNodeId(nodeId);
+  };
+
+  const handleNodePointerMove = (e: React.PointerEvent<SVGGElement>, nodeId: string) => {
+    const info = dragPointerInfoRef.current;
+    if (!info || info.nodeId !== nodeId || info.pointerId !== e.pointerId) return;
+
+    const dxScreen = e.clientX - info.startX;
+    const dyScreen = e.clientY - info.startY;
+    const dist = Math.hypot(dxScreen, dyScreen);
+
+    if (dist > 3) {
+      info.hasMoved = true;
+      const dx = dxScreen / zoom;
+      const dy = dyScreen / zoom;
+      setDraggedNodeOffsets((prev) => ({
+        ...prev,
+        [nodeId]: {
+          x: info.initialOffset.x + dx,
+          y: info.initialOffset.y + dy,
+        },
+      }));
+    }
+  };
+
+  const handleNodePointerUp = (e: React.PointerEvent<SVGGElement>, node: LayoutNode) => {
+    const info = dragPointerInfoRef.current;
+    if (info && info.nodeId === node.id && info.pointerId === e.pointerId) {
+      try {
+        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      const hasMoved = info.hasMoved;
+      dragPointerInfoRef.current = null;
+      setDraggingNodeId(null);
+
+      // If user merely clicked without dragging, perform selection
+      if (!hasMoved) {
+        setSelectedNode(selectedNode?.id === node.id ? null : node);
+        setSelectedEdge(null);
+      }
+    }
+  };
+
+  // ── Focal-Point Wheel Zoom (centered around mouse cursor) ──
   useEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
     const handleNativeWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoom((prev) => Math.min(2.5, Math.max(0.35, prev * factor)));
+      const rect = svgEl.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left;
+      const cursorY = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      setZoom((prevZoom) => {
+        const newZoom = Math.min(2.5, Math.max(0.35, +(prevZoom * factor).toFixed(3)));
+        if (newZoom === prevZoom) return prevZoom;
+
+        // Shift pan so graph point under mouse cursor remains fixed on screen
+        setPan((prevPan) => ({
+          x: cursorX - ((cursorX - prevPan.x) * newZoom) / prevZoom,
+          y: cursorY - ((cursorY - prevPan.y) * newZoom) / prevZoom,
+        }));
+
+        return newZoom;
+      });
     };
     svgEl.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => {
       svgEl.removeEventListener("wheel", handleNativeWheel);
     };
-  }, [data]);
+  }, []);
 
-  const handleZoomIn = () => setZoom((z) => Math.min(2.5, z * 1.2));
-  const handleZoomOut = () => setZoom((z) => Math.max(0.35, z / 1.2));
+  const handleZoomIn = () => setZoom((z) => Math.min(2.5, +(z * 1.2).toFixed(3)));
+  const handleZoomOut = () => setZoom((z) => Math.max(0.35, +(z / 1.2).toFixed(3)));
   const handleResetView = () => {
     setZoom(1.0);
     setPan({ x: 0, y: 0 });
+    setDraggedNodeOffsets({});
   };
 
   const handleFitToView = useCallback(() => {
-    setZoom(0.85);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    if (layout.nodes.length === 0) {
+      setZoom(1.0);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+
+    const xs = layout.nodes.map((n) => n.x + (draggedNodeOffsets[n.id]?.x || 0));
+    const ys = layout.nodes.map((n) => n.y + (draggedNodeOffsets[n.id]?.y || 0));
+
+    const minX = Math.min(...xs) - 80;
+    const maxX = Math.max(...xs) + 80;
+    const minY = Math.min(...ys) - 80;
+    const maxY = Math.max(...ys) + 80;
+
+    const graphW = Math.max(100, maxX - minX);
+    const graphH = Math.max(100, maxY - minY);
+
+    const scaleX = (layout.width * 0.92) / graphW;
+    const scaleY = (layout.height * 0.92) / graphH;
+    const fitZoom = Math.min(1.8, Math.max(0.35, Math.min(scaleX, scaleY)));
+
+    const graphCenterX = (minX + maxX) / 2;
+    const graphCenterY = (minY + maxY) / 2;
+
+    const newPanX = layout.width / 2 - graphCenterX * fitZoom;
+    const newPanY = layout.height / 2 - graphCenterY * fitZoom;
+
+    setZoom(+fitZoom.toFixed(3));
+    setPan({ x: Math.round(newPanX), y: Math.round(newPanY) });
+  }, [layout.nodes, layout.width, layout.height, draggedNodeOffsets]);
 
   if (isLoading) {
     return (
@@ -854,10 +991,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             display: "block",
             userSelect: "none",
           }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
         >
           <defs>
             {/* Arrowhead Markers */}
@@ -918,8 +1051,19 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             </marker>
           </defs>
 
-          {/* Canvas Background Rect for dragging */}
-          <rect width={width} height={height} fill="transparent" />
+          {/* Canvas Background Rect for dragging/panning */}
+          <rect
+            data-role="canvas-bg"
+            data-testid="canvas-background"
+            width={width}
+            height={height}
+            fill="transparent"
+            onPointerDown={handleBackgroundPointerDown}
+            onPointerMove={handleBackgroundPointerMove}
+            onPointerUp={handleBackgroundPointerUp}
+            onPointerCancel={handleBackgroundPointerUp}
+            style={{ cursor: isPanning ? "grabbing" : "grab" }}
+          />
 
           {/* Group containing transformed graph contents */}
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
@@ -1020,17 +1164,24 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                 }
               }
 
-              // Offset endpoints to sit on node border
+              // Offset endpoints to sit on node border (incorporating individual dragged offsets)
+              const srcOffset = draggedNodeOffsets[src.id] || { x: 0, y: 0 };
+              const dstOffset = draggedNodeOffsets[dst.id] || { x: 0, y: 0 };
+              const srcX = src.x + srcOffset.x;
+              const srcY = src.y + srcOffset.y;
+              const dstX = dst.x + dstOffset.x;
+              const dstY = dst.y + dstOffset.y;
+
               const srcRadius = src.id === targetNodeId ? NODE_RADIUS_TARGET : NODE_RADIUS_DEFAULT;
               const dstRadius = dst.id === targetNodeId ? NODE_RADIUS_TARGET : NODE_RADIUS_DEFAULT;
-              const dx = dst.x - src.x;
-              const dy = dst.y - src.y;
+              const dx = dstX - srcX;
+              const dy = dstY - srcY;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-              const x1 = src.x + (dx / dist) * (srcRadius + 4);
-              const y1 = src.y + (dy / dist) * (srcRadius + 4);
-              const x2 = dst.x - (dx / dist) * (dstRadius + 6);
-              const y2 = dst.y - (dy / dist) * (dstRadius + 6);
+              const x1 = srcX + (dx / dist) * (srcRadius + 4);
+              const y1 = srcY + (dy / dist) * (srcRadius + 4);
+              const x2 = dstX - (dx / dist) * (dstRadius + 6);
+              const y2 = dstY - (dy / dist) * (dstRadius + 6);
 
               const edgeLabel = edge.label || "DEPENDS_ON";
               const labelBoxWidth = Math.min(110, edgeLabel.length * 5.4 + 12);
@@ -1046,7 +1197,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                     stroke="transparent"
                     strokeWidth={16}
                     style={{ cursor: "pointer" }}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedEdge(edge);
                       setSelectedNode(null);
                     }}
@@ -1145,17 +1297,25 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                   ? `${cleanLabel.slice(0, maxChars - 1)}…`
                   : cleanLabel;
 
+              const nodeOffset = draggedNodeOffsets[node.id] || { x: 0, y: 0 };
+              const posX = node.x + nodeOffset.x;
+              const posY = node.y + nodeOffset.y;
+
               return (
                 <g
                   key={node.id}
-                  transform={`translate(${node.x}, ${node.y})`}
-                  onClick={() => {
-                    setSelectedNode(selectedNode?.id === node.id ? null : node);
-                    setSelectedEdge(null);
-                  }}
+                  data-testid={`node-${node.id}`}
+                  transform={`translate(${posX}, ${posY})`}
+                  onPointerDown={(e) => handleNodePointerDown(e, node.id)}
+                  onPointerMove={(e) => handleNodePointerMove(e, node.id)}
+                  onPointerUp={(e) => handleNodePointerUp(e, node)}
+                  onPointerCancel={(e) => handleNodePointerUp(e, node)}
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
-                  style={{ cursor: "pointer" }}
+                  style={{
+                    cursor: draggingNodeId === node.id ? "grabbing" : "pointer",
+                    touchAction: "none",
+                  }}
                 >
                   {/* Target pulse/glow ring */}
                   {isTarget && (

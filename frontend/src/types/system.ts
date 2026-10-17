@@ -51,9 +51,23 @@ export interface SystemStatusData {
   freshness_status?: string;
   llm_provider?: string;
   llm_configured?: boolean;
+  planner_provider?: string;
+  planner_model?: string;
+  explanation_provider?: string;
+  explanation_model?: string;
+  credentials_detected?: boolean;
   action_service_configured?: boolean;
   action_approval_required?: boolean;
   mcp_tools?: string[];
   subsystem_health?: Record<string, string>;
+}
+
+export interface LLMTestResult {
+  status: "GEMINI_ACTIVE" | "FALLBACK_ACTIVE" | "NOT_CONFIGURED" | "PROVIDER_UNAVAILABLE";
+  provider: string;
+  model: string;
+  latency_ms: number;
+  message: string;
+  credentials_detected: boolean;
 }
 

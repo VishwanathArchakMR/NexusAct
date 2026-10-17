@@ -377,5 +377,17 @@ export async function fetchPanelExplanation(
   );
 }
 
+export async function testLLMConnectivity(): Promise<import("../types/system").LLMTestResult> {
+  const url = `${config.apiBaseUrl}/api/v1/system/llm-test`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return handleResponse<import("../types/system").LLMTestResult>(
+    res,
+    "Failed to test LLM connectivity"
+  );
+}
+
 
 

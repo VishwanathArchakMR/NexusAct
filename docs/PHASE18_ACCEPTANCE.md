@@ -1,0 +1,16 @@
+# NexusAct — Phase 18 Acceptance Criteria Matrix
+
+| Criterion | Requirement | Verification Method | Status |
+|---|---|---|---|
+| **1. Mode A UX Removal** | Remove public knowledge discovery UI & provider selection controls from product interface while keeping backend APIs intact | `App.tsx`, `UniversalDiscoveryWorkspace.tsx` decoupled from primary navigation, discovery endpoints preserved | **PASSED** |
+| **2. Investigation Center Entry Point** | Rename top-level navigation to Investigation Center with 3 clear workflow cards: Codebase Walkthrough, Security Triage, and Fraud Investigation | `InvestigationCenter.tsx`, `phase9_universal_workspace.test.tsx`, vitest suite | **PASSED** |
+| **3. Real Investigation Memory** | Display persistent FalkorDB saved investigations with real query, workflow mode, target graph, commit SHA, and deep-link restoration | `fetchSavedInvestigations()`, FalkorDB `PublicInvestigation` node queries | **PASSED** |
+| **4. Dual LLM Diagnostics** | Report distinct statuses for Agent Planning and Explanation Generation (`GEMINI_ACTIVE`, `FALLBACK_ACTIVE`, `NOT_CONFIGURED`, `PROVIDER_UNAVAILABLE`) | `GET /api/v1/system/status`, `SystemStatusDashboard.tsx`, `system_status.test.tsx` | **PASSED** |
+| **5. Bounded LLM Connectivity Test** | Provide safe connectivity ping endpoint bounded to 5s with error sanitization and secret redaction | `POST /api/v1/system/llm-test`, `testLLMConnectivity()` in `client.ts` | **PASSED** |
+| **6. Individual Node Dragging** | Dragging an individual node moves only that node and updates connected edge endpoints in real time without panning canvas | Pointer event capture on node `<g>` elements and dynamic edge endpoint calculations in `GraphCanvas.tsx` | **PASSED** |
+| **7. Background Canvas Panning** | Canvas background panning is triggered only from background rect, avoiding accidental drags when clicking nodes/edges | Dedicated `<rect data-role="canvas-bg">` pointer event handlers with `stopPropagation` on nodes/edges | **PASSED** |
+| **8. Focal-Point Wheel Zoom** | Wheel and trackpad zoom anchors predictably to the cursor focal point within bounded limits (0.35x - 2.5x) | Mathematical cursor pan offset adjustment in `GraphCanvas.tsx` native wheel effect | **PASSED** |
+| **9. Calculated Fit-to-View** | Fit-to-view calculates real bounding box of all visible nodes and centers graph cleanly | `handleFitToView` computing `[minX, maxX, minY, maxY]` in `GraphCanvas.tsx` | **PASSED** |
+| **10. Lossless Viewport & State Preservation** | Preserves selected nodes, dragged offsets, pan, zoom, and active investigation when navigating among panels | Internal state retained across CSS-preserved panel tabs in `InvestigationWorkspace.tsx` | **PASSED** |
+| **11. Deterministic CI Corpus Seeding** | Eliminate flaky CI failure in `test_phase10_input_driven_gaf.py` caused by external API variation | Deterministic `seed_public_corpus_fixture` in `tests/fixtures/synthetic_graph.py` | **PASSED** |
+| **12. Zero-Error Quality Gates** | 100% clean passes across ruff check, ruff format, mypy, pytest (140/140), oxlint, vitest (20/20), and vite build | Full quality suite executed cleanly on local environment | **PASSED** |

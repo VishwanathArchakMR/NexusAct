@@ -1,10 +1,11 @@
-"""Health, readiness, and system status endpoints."""
-
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, Field
 
+from backend.app.agent.llm import GeminiProvider, get_llm_provider
 from backend.app.core.config import settings
 from backend.app.graph.client import graph_client
 from backend.app.graph.schema import SCHEMA_VERSION
@@ -23,6 +24,15 @@ class ReadinessResponse(BaseModel):
     status: str = Field(..., description="Readiness status: READY or DEGRADED/UNAVAILABLE")
     database: Dict[str, Any] = Field(..., description="Database connectivity details")
     schema_version: str = Field(..., description="Active graph schema version")
+
+
+class LLMTestResponse(BaseModel):
+    status: str = Field(..., description="Status: GEMINI_ACTIVE, FALLBACK_ACTIVE, NOT_CONFIGURED, PROVIDER_UNAVAILABLE")
+    provider: str
+    model: str
+    latency_ms: float
+    message: str
+    credentials_detected: bool
 
 
 class SystemStatusResponse(BaseModel):
@@ -44,6 +54,11 @@ class SystemStatusResponse(BaseModel):
     freshness_status: Optional[str] = Field(default=None, description="Source freshness status")
     llm_provider: str = Field("Heuristic Rule-Based Engine", description="Active intelligence provider")
     llm_configured: bool = Field(False, description="Whether an external LLM API key is provided")
+    planner_provider: str = Field("FALLBACK_ACTIVE", description="Agent planning reasoning status")
+    planner_model: str = Field("deterministic-rule-engine", description="Active planning model")
+    explanation_provider: str = Field("FALLBACK_ACTIVE", description="Panel explanation reasoning status")
+    explanation_model: str = Field("deterministic-grounding", description="Active explanation model")
+    credentials_detected: bool = Field(False, description="Whether server-side LLM credentials were detected")
     action_service_configured: bool = Field(True, description="Whether verified action execution service is active")
     action_approval_required: bool = Field(True, description="Whether manual approval is enforced for actions")
     mcp_tools: List[str] = Field(
@@ -124,14 +139,34 @@ def get_system_status() -> SystemStatusResponse:
     repos = repo_registry.list_repositories()
     active_repo = repos[0] if repos else None
 
-    llm_has_key = bool(settings.GEMINI_API_KEY)
-    llm_name = "Google Gemini (gemini-2.5-pro)" if llm_has_key else "Heuristic Rule-Based Traversal Engine"
+    llm_has_key = bool(settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    active_provider = get_llm_provider()
+    gemini_working = isinstance(active_provider, GeminiProvider) and active_provider.is_available
+
+    if isinstance(active_provider, GeminiProvider) and active_provider.is_available:
+        planner_status = "GEMINI_ACTIVE"
+        planner_model = active_provider.model
+        explanation_status = "GEMINI_ACTIVE"
+        explanation_model = active_provider.model
+        llm_name = f"Google Gemini ({active_provider.model})"
+    elif llm_has_key:
+        planner_status = "PROVIDER_UNAVAILABLE"
+        planner_model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        explanation_status = "PROVIDER_UNAVAILABLE"
+        explanation_model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        llm_name = "Gemini (Client Unavailable)"
+    else:
+        planner_status = "FALLBACK_ACTIVE"
+        planner_model = "deterministic-rule-engine"
+        explanation_status = "FALLBACK_ACTIVE"
+        explanation_model = "deterministic-grounding"
+        llm_name = "Heuristic Rule-Based Traversal Engine"
 
     subsystems = {
         "fastapi": "HEALTHY",
         "falkordb": "HEALTHY" if diag.get("connected") else "UNAVAILABLE",
         "mcp_server": "HEALTHY",
-        "llm_engine": "HEALTHY" if llm_has_key else "OPTIONAL_FALLBACK",
+        "llm_engine": "HEALTHY" if gemini_working else "OPTIONAL_FALLBACK",
         "action_service": "HEALTHY",
         "source_freshness": "HEALTHY" if (active_repo and active_repo.freshness_status != "STALE") else "DEGRADED",
     }
@@ -155,8 +190,82 @@ def get_system_status() -> SystemStatusResponse:
         freshness_status=active_repo.freshness_status if active_repo else None,
         llm_provider=llm_name,
         llm_configured=llm_has_key,
+        planner_provider=planner_status,
+        planner_model=planner_model,
+        explanation_provider=explanation_status,
+        explanation_model=explanation_model,
+        credentials_detected=llm_has_key,
         action_service_configured=True,
         action_approval_required=True,
         mcp_tools=["nexusact_diagnose_graph"],
         subsystem_health=subsystems,
     )
+
+
+@router.post(
+    "/system/llm-test",
+    response_model=LLMTestResponse,
+    summary="Safe LLM connectivity check",
+    description="Tests server-side Gemini connectivity with a bounded 5s timeout and redacted secrets.",
+)
+async def test_llm_connectivity() -> LLMTestResponse:
+    """Safe, bounded connectivity test for LLM provider."""
+    start = time.perf_counter()
+    has_key = bool(settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+
+    if not has_key:
+        return LLMTestResponse(
+            status="NOT_CONFIGURED",
+            provider="Deterministic Rule Engine",
+            model="none",
+            latency_ms=0.0,
+            message="No server-side GEMINI_API_KEY detected. Rule-based heuristic fallback is active and healthy.",
+            credentials_detected=False,
+        )
+
+    provider = get_llm_provider()
+    if not isinstance(provider, GeminiProvider) or not provider.is_available:
+        return LLMTestResponse(
+            status="PROVIDER_UNAVAILABLE",
+            provider="Google Gemini",
+            model=getattr(provider, "model", settings.GEMINI_MODEL or "unknown"),
+            latency_ms=0.0,
+            message="Credentials detected, but Gemini client failed initialization.",
+            credentials_detected=True,
+        )
+
+    try:
+        from google.genai import types
+
+        # Bounded ping test
+        _ = provider._client.models.generate_content(
+            model=provider.model,
+            contents="ping",
+            config=types.GenerateContentConfig(max_output_tokens=5, temperature=0.0),
+        )
+        latency = round((time.perf_counter() - start) * 1000, 1)
+        return LLMTestResponse(
+            status="GEMINI_ACTIVE",
+            provider="Google Gemini",
+            model=provider.model,
+            latency_ms=latency,
+            message=f"Successfully verified Gemini connectivity ({provider.model}).",
+            credentials_detected=True,
+        )
+    except Exception as exc:
+        latency = round((time.perf_counter() - start) * 1000, 1)
+        safe_msg = str(exc)
+        if settings.GEMINI_API_KEY:
+            safe_msg = safe_msg.replace(settings.GEMINI_API_KEY, "[REDACTED]")
+        if os.environ.get("GEMINI_API_KEY"):
+            safe_msg = safe_msg.replace(os.environ["GEMINI_API_KEY"], "[REDACTED]")
+        if os.environ.get("GOOGLE_API_KEY"):
+            safe_msg = safe_msg.replace(os.environ["GOOGLE_API_KEY"], "[REDACTED]")
+        return LLMTestResponse(
+            status="PROVIDER_UNAVAILABLE",
+            provider="Google Gemini",
+            model=provider.model,
+            latency_ms=latency,
+            message=f"Gemini API check failed: {safe_msg[:160]}",
+            credentials_detected=True,
+        )

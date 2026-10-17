@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { App } from "../src/app/App";
-import { UniversalDiscoveryWorkspace } from "../src/features/discovery/UniversalDiscoveryWorkspace";
+import { InvestigationCenter } from "../src/features/investigation/InvestigationCenter";
 
 // Mock client API calls
 vi.mock("../src/api/client", () => ({
@@ -150,54 +150,90 @@ vi.mock("../src/api/client", () => ({
   }),
 }));
 
-describe("Phase 10 Universal GAF Input-Driven Navigation and Workspace", () => {
+describe("Phase 18 Investigation Center and Navigation Quality Gates", () => {
   it("renders primary navigation with Software Graph first and default opening workspace", async () => {
     await React.act(async () => {
       render(<App />);
     });
     // Check navigation buttons
     const softwareTab = screen.getByRole("button", { name: /Software Graph/i });
-    const universalTab = screen.getByRole("button", { name: /Universal GAF/i });
+    const investigationTab = screen.getByRole("button", { name: /Investigation Center/i });
     const diagnosticsTab = screen.getByRole("button", { name: /Diagnostics/i });
 
     expect(softwareTab).toBeDefined();
-    expect(universalTab).toBeDefined();
+    expect(investigationTab).toBeDefined();
     expect(diagnosticsTab).toBeDefined();
 
     // Default view is Software Graph workspace
     expect(screen.getByText(/Dynamic Graph Intelligence Investigation/i)).toBeDefined();
 
-    // Switch to Universal GAF
+    // Switch to Investigation Center
     await React.act(async () => {
-      fireEvent.click(universalTab);
+      fireEvent.click(investigationTab);
     });
-    expect(screen.getByText(/Universal GraphAction Fabric \(Universal GAF\)/i)).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Investigation Center" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Codebase Walkthrough/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Security Vulnerability Triage/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Fraud Investigation/i })).toBeDefined();
   });
 
-  it("renders explicit input modes and updates mode when clicked", async () => {
+  it("renders the 3 operational workflow entry points and launches a workflow into Software Graph", async () => {
+    const handleLaunch = vi.fn();
     await React.act(async () => {
-      render(<UniversalDiscoveryWorkspace />);
+      render(
+        <InvestigationCenter
+          selectedRepoId="repo:local_nexusact"
+          onSelectRepoId={vi.fn()}
+          onLaunchWorkflow={handleLaunch}
+        />
+      );
     });
-    expect(screen.getByRole("button", { name: /Mode A — Public Knowledge Discovery/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Mode B — Selected Repository/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Mode C — Repository \+ Public Evidence/i })).toBeDefined();
 
-    const repoModeBtn = screen.getByRole("button", { name: /Mode B — Selected Repository/i });
+    const walkthroughBtn = screen.getByRole("button", { name: /Launch Codebase Walkthrough/i });
+    const securityBtn = screen.getByRole("button", { name: /Launch Security Triage/i });
+    const fraudBtn = screen.getByRole("button", { name: /Launch Fraud Investigation/i });
+
+    expect(walkthroughBtn).toBeDefined();
+    expect(securityBtn).toBeDefined();
+    expect(fraudBtn).toBeDefined();
+
     await React.act(async () => {
-      fireEvent.click(repoModeBtn);
+      fireEvent.click(walkthroughBtn);
     });
+    expect(handleLaunch).toHaveBeenCalledWith("codebase_walkthrough", "graph");
 
-    // Codebase suggested queries appear
-    expect(screen.getByText(/Which modules depend on the database layer\?/i)).toBeDefined();
+    await React.act(async () => {
+      fireEvent.click(securityBtn);
+    });
+    expect(handleLaunch).toHaveBeenCalledWith("security_triage", "security");
+
+    await React.act(async () => {
+      fireEvent.click(fraudBtn);
+    });
+    expect(handleLaunch).toHaveBeenCalledWith("fraud_demo", "fraud");
   });
 
-  it("renders graph memory and confirms action without error", async () => {
-    let containerElem: HTMLElement | null = null;
+  it("renders recent FalkorDB graph investigations and allows opening an investigation", async () => {
+    const handleLaunch = vi.fn();
     await React.act(async () => {
-      const { container } = render(<UniversalDiscoveryWorkspace />);
-      containerElem = container;
+      render(
+        <InvestigationCenter
+          selectedRepoId="repo:local_nexusact"
+          onSelectRepoId={vi.fn()}
+          onLaunchWorkflow={handleLaunch}
+        />
+      );
     });
-    expect(screen.getByText(/Graph-Backed Investigation Memory/i)).toBeDefined();
-    expect(containerElem).toBeDefined();
+
+    expect(screen.getByText(/Recent Graph Investigations/i)).toBeDefined();
+    expect(screen.getByText(/Explore citation relationships between neural network research works\./i)).toBeDefined();
+
+    const openBtn = screen.getByRole("button", { name: /Open/i });
+    expect(openBtn).toBeDefined();
+
+    await React.act(async () => {
+      fireEvent.click(openBtn);
+    });
+    expect(handleLaunch).toHaveBeenCalled();
   });
 });

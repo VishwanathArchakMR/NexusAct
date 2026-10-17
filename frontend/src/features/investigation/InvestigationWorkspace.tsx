@@ -53,9 +53,23 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+export type InvestigationWorkspaceTab =
+  | "graph"
+  | "code"
+  | "security"
+  | "fraud"
+  | "simulation"
+  | "reviewers"
+  | "trace"
+  | "neighborhood"
+  | "provenance"
+  | "action";
+
 export interface InvestigationWorkspaceProps {
   selectedRepoId?: string;
   onSelectRepoId?: (id: string) => void;
+  initialMode?: InvestigationMode;
+  initialTab?: InvestigationWorkspaceTab;
 }
 
 export type InvestigationMode =
@@ -67,6 +81,8 @@ export type InvestigationMode =
 export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   selectedRepoId: propRepoId,
   onSelectRepoId,
+  initialMode,
+  initialTab,
 }) => {
   // Repositories state
   const [repositories, setRepositories] = useState<RepositoryRecord[]>([]);
@@ -82,7 +98,9 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   }
 
   // Investigation Mode
-  const [investigationMode, setInvestigationMode] = useState<InvestigationMode>("codebase_walkthrough");
+  const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(
+    initialMode || "codebase_walkthrough"
+  );
 
   // Onboard repository modal state
   const [showOnboardModal, setShowOnboardModal] = useState<boolean>(false);
@@ -99,20 +117,23 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
     "How do API requests flow into the graph storage layer, and what symbols are defined?"
   );
 
-  const [activeTab, setActiveTab] = useState<
-    | "graph"
-    | "code"
-    | "security"
-    | "fraud"
-    | "simulation"
-    | "reviewers"
-    | "trace"
-    | "neighborhood"
-    | "provenance"
-    | "action"
-  >("graph");
+  const [activeTab, setActiveTab] = useState<InvestigationWorkspaceTab>(
+    initialTab || "graph"
+  );
   const [simulationView, setSimulationView] = useState<"baseline" | "scenario">("baseline");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialMode) {
+      setInvestigationMode(initialMode);
+    }
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const [report, setReport] = useState<InvestigationReport | null>(null);
   const [subgraph, setSubgraph] = useState<SubgraphResponse | null>(null);
