@@ -19,7 +19,9 @@ import type {
   SourceMetadataOutput,
   SourceSnapshot,
   FileContentResponse,
+  FileTreeResponse,
 } from "../types/investigation";
+
 
 export class ApiError extends Error {
   statusCode: number;
@@ -163,6 +165,19 @@ export async function fetchFileContent(
   const res = await fetch(url);
   return handleResponse<FileContentResponse>(res, "Failed to fetch file content");
 }
+
+export async function fetchFileTree(
+  repoId: string,
+  subpath?: string,
+  maxDepth = 5
+): Promise<FileTreeResponse> {
+  const params = new URLSearchParams({ repo_id: repoId, max_depth: maxDepth.toString() });
+  if (subpath) params.append("subpath", subpath);
+  const url = `${config.apiBaseUrl}/api/v1/ingest/file-tree?${params.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<FileTreeResponse>(res, "Failed to load repository file tree");
+}
+
 
 export async function runInvestigation(
   question: string,

@@ -156,13 +156,14 @@ railway variables set APP_ENV=production FALKORDB_HOST=... CORS_ORIGINS=...
 
 ---
 
-## 7. Quality Gates (Phase 5 Final)
+## 7. Quality Gates (Phase 16 Final)
 
 | Suite | Result |
 |---|---|
 | `ruff check .` | ✅ 0 errors |
-| `mypy backend` | ✅ 0 errors (46 files) |
-| `pytest -q` | ✅ **62/62 tests passing** |
+| `ruff format --check .` | ✅ Clean formatting |
+| `mypy backend mcp_server` | ✅ 0 errors |
+| `pytest -q` | ✅ **136/136 tests passing** |
 | `oxlint` (frontend) | ✅ 0 errors, 0 warnings |
-| `vitest run` | ✅ **8/8 tests passing** |
-| `tsc -b && vite build` | ✅ Built in 2.37s |
+| `vitest run` | ✅ **18/18 tests passing** |
+| `tsc -b && vite build` | ✅ Clean build |

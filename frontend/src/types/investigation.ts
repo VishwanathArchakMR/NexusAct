@@ -238,6 +238,45 @@ export interface SourceSnapshot {
   freshness_status: "FRESH" | "UPDATED" | "STALE_SOURCE_UNAVAILABLE" | "INGESTION_FAILED" | "SNAPSHOT_UNRESOLVED";
 }
 
+export interface SymbolOutlineItem {
+  name: string;
+  kind: "function" | "class" | "method";
+  start_line: number;
+  end_line: number;
+  signature?: string;
+  docstring?: string;
+}
+
+export interface FileGraphLinkage {
+  has_graph_module: boolean;
+  module_id?: string;
+  module_name?: string;
+  dependencies: string[];
+  dependents: string[];
+  modeled_level: string;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size_bytes?: number;
+  language?: string;
+  has_graph_module?: boolean;
+  module_id?: string;
+  children?: FileTreeNode[];
+}
+
+export interface FileTreeResponse {
+  repository_id: string;
+  repository_name: string;
+  commit_sha: string;
+  total_files: number;
+  total_directories: number;
+  tree: FileTreeNode[];
+  truncated: boolean;
+}
+
 export interface FileContentResponse {
   file_path: string;
   repository_id: string;
@@ -247,7 +286,10 @@ export interface FileContentResponse {
   total_lines: number;
   content: string;
   language: string;
+  symbols?: SymbolOutlineItem[];
+  graph_linkage?: FileGraphLinkage;
 }
+
 
 export interface InvestigationReport {
   investigation_id: string;

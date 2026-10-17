@@ -7,7 +7,6 @@ import type {
   RepositoryRecord,
   SourceMetadataOutput,
   SourceSnapshot,
-  FileContentResponse,
 } from "../../types/investigation";
 import {
   fetchModules,
@@ -19,13 +18,15 @@ import {
   refreshRepository,
   fetchSourceMetadata,
   fetchRepositorySnapshot,
-  fetchFileContent,
 } from "../../api/client";
+
 import { GraphCanvas } from "./GraphCanvas";
 import { AgentTrace } from "./AgentTrace";
 import { ReviewerRankings } from "./ReviewerRankings";
 import { CounterfactualDiff } from "./CounterfactualDiff";
 import { IssueProposalCard } from "./IssueProposalCard";
+import { CodeInspector } from "./CodeInspector";
+
 import {
   Sparkles,
   GitBranch,
@@ -113,11 +114,6 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   const [subgraph, setSubgraph] = useState<SubgraphResponse | null>(null);
   const [ingestionInfo, setIngestionInfo] = useState<IngestionReport | null>(null);
 
-  // Code Inspector state
-  const [codeFilePath, setCodeFilePath] = useState<string>("backend/app/main.py");
-  const [codeData, setCodeData] = useState<FileContentResponse | null>(null);
-  const [isLoadingCode, setIsLoadingCode] = useState<boolean>(false);
-  const [codeError, setCodeError] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -176,20 +172,6 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
     }
   }, [selectedRepoId]);
 
-  const loadCode = React.useCallback(async (repoId: string, filePath: string) => {
-    try {
-      setIsLoadingCode(true);
-      setCodeError(null);
-      const data = await fetchFileContent(repoId, filePath, 1, 150);
-      setCodeData(data);
-    } catch (e) {
-      setCodeError(e instanceof Error ? e.message : "Failed to load file contents");
-      setCodeData(null);
-    } finally {
-      setIsLoadingCode(false);
-    }
-  }, []);
-
   useEffect(() => {
     (async () => { await loadRepositories(); })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,13 +189,11 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           loadModules(undefined, selectedRepoId),
           loadGraph(undefined, selectedRepoId),
         ]);
-        if (codeFilePath) {
-          loadCode(selectedRepoId, codeFilePath);
-        }
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepoId, loadSnapshot, loadRepoMetadata, loadModules, loadGraph, loadCode]);
+  }, [selectedRepoId, loadSnapshot, loadRepoMetadata, loadModules, loadGraph]);
+
 
   const handleRefresh = async () => {
     if (!selectedRepoId) return;
@@ -1601,104 +1581,34 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           onSelectTarget={(nodeId) => {
             setSelectedModule(nodeId);
             loadGraph(nodeId, selectedRepoId);
-            // If it looks like a file, load it in the code inspector
-            if (nodeId.includes(".") || nodeId.includes("/")) {
-              const fileGuess = nodeId.replace(/^mod:/, "").replace(/\./g, "/") + ".py";
-              setCodeFilePath(fileGuess);
-              loadCode(selectedRepoId, fileGuess);
-            }
+          }}
+          onOpenSourceFile={() => {
+            setActiveTab("code");
           }}
         />
+
       </div>
 
       {activeTab === "code" && (
-        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
-            <div>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Code size={18} color="var(--accent-blue)" />
-                Code Inspector (Grounded in Verified Working Tree)
-              </h3>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
-                Directly inspects checked-out source files for <strong>{selectedRepoId}</strong> at commit <code style={{ fontFamily: "var(--font-mono)" }}>{snapshot?.commit_sha?.slice(0, 8) || "HEAD"}</code>.
-              </p>
-            </div>
+        <CodeInspector
+          repoId={selectedRepoId}
+          commitSha={snapshot?.commit_sha}
+          activeTargetNodeId={selectedModule}
+          onNavigateToGraph={(moduleId) => {
+            setSelectedModule(moduleId);
+            loadGraph(moduleId, selectedRepoId);
+            setActiveTab("graph");
+          }}
+          onTriggerInvestigation={(q, targetId) => {
+            setQuestion(q);
+            if (targetId) setSelectedModule(targetId);
+            handleInvestigate(targetId);
+            setActiveTab("graph");
+          }}
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="text"
-                value={codeFilePath}
-                onChange={(e) => setCodeFilePath(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    loadCode(selectedRepoId, codeFilePath);
-                  }
-                }}
-                placeholder="Relative file path (e.g. backend/app/main.py)"
-                style={{
-                  padding: "0.45rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border-subtle)",
-                  fontSize: "0.8rem",
-                  fontFamily: "var(--font-mono)",
-                  width: "280px",
-                  color: "var(--text-primary)",
-                  backgroundColor: "var(--bg-primary)",
-                }}
-              />
-              <button
-                onClick={() => loadCode(selectedRepoId, codeFilePath)}
-                disabled={isLoadingCode}
-                style={{
-                  padding: "0.45rem 0.85rem",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--accent-blue)",
-                  color: "#ffffff",
-                  border: "none",
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {isLoadingCode ? "Loading..." : "Load Code"}
-              </button>
-            </div>
-          </div>
-
-          {codeError && (
-            <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fee2e2", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>
-              {codeError}
-            </div>
-          )}
-
-          {codeData && (
-            <div style={{ borderRadius: "6px", border: "1px solid var(--border-subtle)", overflow: "hidden", backgroundColor: "var(--bg-primary)" }}>
-              <div style={{ padding: "0.5rem 0.85rem", backgroundColor: "var(--bg-secondary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text-primary)" }}>
-                  {codeData.file_path}
-                </span>
-                <span>
-                  Lines {codeData.start_line} - {codeData.end_line} of {codeData.total_lines} • Language: <strong>{codeData.language}</strong>
-                </span>
-              </div>
-              <pre
-                style={{
-                  margin: 0,
-                  padding: "1rem",
-                  overflowX: "auto",
-                  fontSize: "0.8rem",
-                  lineHeight: "1.5",
-                  fontFamily: "var(--font-mono)",
-                  color: "var(--text-primary)",
-                  maxHeight: "500px",
-                }}
-              >
-                <code>{codeData.content}</code>
-              </pre>
-            </div>
-          )}
-        </div>
+        />
       )}
+
 
       {activeTab === "security" && (
         <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>

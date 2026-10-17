@@ -29,7 +29,9 @@ import {
   ArrowRight,
   Info,
   Compass,
+  FileCode,
 } from "lucide-react";
+
 
 export interface LayoutNode extends GraphNode {
   x: number;
@@ -49,6 +51,7 @@ export interface GraphCanvasProps {
   highlightPathNodes?: string[];
   isLoading?: boolean;
   onSelectTarget?: (nodeId: string) => void;
+  onOpenSourceFile?: (filePath: string) => void;
 }
 
 // Layout parameters
@@ -66,11 +69,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   highlightPathNodes = [],
   isLoading = false,
   onSelectTarget,
+  onOpenSourceFile,
 }) => {
+  // View mode: Investigation Path vs Network Overview
+  const [graphViewMode, setGraphViewMode] = useState<"path" | "overview">("path");
+
   // Viewport transforms (Pan & Zoom)
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState<boolean>(false);
+
   const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Interactive selection & filtering
@@ -532,6 +540,50 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             )}
           </div>
 
+          {/* Mode Toggle: Investigation Path vs Network Overview */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              backgroundColor: "var(--bg-primary)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "5px",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              onClick={() => setGraphViewMode("path")}
+              title="Investigation Path view focused on active target and path"
+              style={{
+                border: "none",
+                padding: "0.22rem 0.55rem",
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                backgroundColor: graphViewMode === "path" ? "var(--accent-blue)" : "transparent",
+                color: graphViewMode === "path" ? "#ffffff" : "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              Path View
+            </button>
+            <button
+              onClick={() => setGraphViewMode("overview")}
+              title="Network Overview of module dependency topology"
+              style={{
+                border: "none",
+                borderLeft: "1px solid var(--border-subtle)",
+                padding: "0.22rem 0.55rem",
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                backgroundColor: graphViewMode === "overview" ? "var(--accent-blue)" : "transparent",
+                color: graphViewMode === "overview" ? "#ffffff" : "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              Overview
+            </button>
+          </div>
+
           {/* Hop Depth Selector */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "var(--text-secondary)" }}>
             <span style={{ fontSize: "0.72rem", fontWeight: 600 }}>Hop Range:</span>
@@ -555,6 +607,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               </button>
             ))}
           </div>
+
 
           {/* Node Type Filter */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
@@ -1263,8 +1316,37 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                     Focus as Investigation Target
                   </button>
                 )}
+
+                {onOpenSourceFile && (
+                  <button
+                    onClick={() => {
+                      const cleanMod = selectedNode.id.replace(/^mod:/, "");
+                      const fileGuess = cleanMod.replace(/\./g, "/") + ".py";
+                      onOpenSourceFile(fileGuess);
+                    }}
+                    style={{
+                      marginTop: "0.4rem",
+                      padding: "0.45rem 0.75rem",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--bg-card)",
+                      color: "var(--text-primary)",
+                      fontWeight: 600,
+                      fontSize: "0.75rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.4rem",
+                    }}
+                  >
+                    <FileCode size={13} color="var(--accent-blue)" />
+                    Inspect Source in Explorer
+                  </button>
+                )}
               </div>
             )}
+
 
             {/* Selected Edge Details */}
             {selectedEdge && (

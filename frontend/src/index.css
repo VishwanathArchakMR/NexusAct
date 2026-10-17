@@ -1,42 +1,44 @@
 :root {
-  /* Restrained, modern engineering palette */
-  --bg-primary: #f8fafc;
-  --bg-secondary: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-hover: #f1f5f9;
-  --bg-muted: #f1f5f9;
+  /* NexusAct Verified Palette — Light Mode */
+  --primary-navy: #0B1F3A;
+  --accent-blue: #2563EB;
+  --accent-blue-hover: #1D4ED8;
+  --accent-blue-subtle: #EFF6FF;
+  --accent-cyan: #0284C7;
 
-  --border-subtle: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --border-focus: #2563eb;
+  --signal-green: #16A34A;
+  --alert-red: #DC2626;
 
-  /* Deep navy typography */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
+  --bg-primary: #F8FAFC;
+  --bg-secondary: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F1F5F9;
+  --bg-muted: #F1F5F9;
 
-  /* Electric-blue primary accents */
-  --accent-blue: #2563eb;
-  --accent-blue-hover: #1d4ed8;
-  --accent-blue-subtle: #eff6ff;
-  --accent-cyan: #0284c7;
+  --border-subtle: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-focus: #2563EB;
+
+  --text-primary: #1E293B;
+  --text-secondary: #64748B;
+  --text-muted: #94A3B8;
 
   /* Evidence & Verification State Colors */
-  --status-verified-bg: #ecfdf5;
-  --status-verified-text: #059669;
-  --status-verified-border: #a7f3d0;
+  --status-verified-bg: #ECFDF5;
+  --status-verified-text: #16A34A;
+  --status-verified-border: #BBF7D0;
 
-  --status-supported-bg: #f0f9ff;
-  --status-supported-text: #0284c7;
-  --status-supported-border: #bae6fd;
+  --status-supported-bg: #F0F9FF;
+  --status-supported-text: #0284C7;
+  --status-supported-border: #BAE6FD;
 
-  --status-contradicted-bg: #fff1f2;
-  --status-contradicted-text: #e11d48;
-  --status-contradicted-border: #fecdd3;
+  --status-contradicted-bg: #FEF2F2;
+  --status-contradicted-text: #DC2626;
+  --status-contradicted-border: #FECACA;
 
-  --status-unknown-bg: #fffbeb;
-  --status-unknown-text: #d97706;
-  --status-unknown-border: #fde68a;
+  --status-unknown-bg: #FFFBEB;
+  --status-unknown-text: #D97706;
+  --status-unknown-border: #FDE68A;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
@@ -46,40 +48,45 @@
 }
 
 [data-theme="dark"] {
-  --bg-primary: #090d16;
-  --bg-secondary: #0f172a;
-  --bg-card: #0f172a;
-  --bg-card-hover: #1e293b;
-  --bg-muted: #1e293b;
+  /* NexusAct Verified Palette — Near-Black Navy Dark Mode */
+  --primary-navy: #070B14;
+  --accent-blue: #3B82F6;
+  --accent-blue-hover: #60A5FA;
+  --accent-blue-subtle: rgba(59, 130, 246, 0.16);
+  --accent-cyan: #38BDF8;
 
-  --border-subtle: #1e293b;
+  --signal-green: #22C55E;
+  --alert-red: #EF4444;
+
+  --bg-primary: #070B14;
+  --bg-secondary: #0B132B;
+  --bg-card: #0F172A;
+  --bg-card-hover: #1E293B;
+  --bg-muted: #131E3A;
+
+  --border-subtle: #1E293B;
   --border-strong: #334155;
-  --border-focus: #3b82f6;
+  --border-focus: #3B82F6;
 
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
 
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #60a5fa;
-  --accent-blue-subtle: rgba(59, 130, 246, 0.15);
-  --accent-cyan: #38bdf8;
+  --status-verified-bg: rgba(22, 163, 74, 0.18);
+  --status-verified-text: #4ADE80;
+  --status-verified-border: rgba(34, 197, 94, 0.4);
 
-  --status-verified-bg: #064e3b;
-  --status-verified-text: #34d399;
-  --status-verified-border: #059669;
+  --status-supported-bg: rgba(2, 132, 199, 0.18);
+  --status-supported-text: #38BDF8;
+  --status-supported-border: rgba(56, 189, 248, 0.4);
 
-  --status-supported-bg: #082f49;
-  --status-supported-text: #38bdf8;
-  --status-supported-border: #0284c7;
+  --status-contradicted-bg: rgba(220, 38, 38, 0.2);
+  --status-contradicted-text: #F87171;
+  --status-contradicted-border: rgba(239, 68, 68, 0.4);
 
-  --status-contradicted-bg: #4c0519;
-  --status-contradicted-text: #fb7185;
-  --status-contradicted-border: #e11d48;
-
-  --status-unknown-bg: #451a03;
-  --status-unknown-text: #fbbf24;
-  --status-unknown-border: #d97706;
+  --status-unknown-bg: rgba(217, 119, 6, 0.2);
+  --status-unknown-text: #FBBF24;
+  --status-unknown-border: rgba(245, 158, 11, 0.4);
 
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
@@ -144,7 +151,7 @@ select option {
   opacity: 0.8;
 }
 
-/* Ensure scrollbars match theme */
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

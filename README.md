@@ -10,16 +10,16 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-131%2F131%20passing-brightgreen)](./tests)
-[![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
+[![Tests](https://img.shields.io/badge/pytest-136%2F136%20passing-brightgreen)](./tests)
+[![Vitest](https://img.shields.io/badge/vitest-18%2F18%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
+> **Hackathon Submission Checklist:** [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md)  
+> **Phase 16 Product Experience:** Code Inspector Explorer, Live Diagnostics, Dual-Mode Graph Sync  
 > **Phase 15 Final Report:** [`docs/PHASE15_FINAL_REPORT.md`](docs/PHASE15_FINAL_REPORT.md)  
-> **Phase 15 Acceptance Matrix:** [`docs/PHASE15_ACCEPTANCE.md`](docs/PHASE15_ACCEPTANCE.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
-> **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md)  
 
 ---
 
@@ -34,6 +34,7 @@ Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across
 4. **Bounded Synthetic Fraud Investigation (Phase 13):** Multi-hop graph traversal over isolated `nexusact_fraud_demo` graph detecting rapid circular transfer rings (`acc:101 -> acc:102 -> acc:103 -> acc:101`), shared device infrastructure (`dev:iphone_xyz`), and verified benign control baselines.
 5. **Google Gemini LLM Planning Adapter (Phase 13):** Server-side function-calling and structured tool budget execution using official `google-genai` SDK (`gemini-2.5-flash`). Enforces tool allowlist and deterministic fallback.
 6. **Safe Internal Action Persistence (Phase 13):** Safe `SAVED` state in FalkorDB when GitHub credentials are unset, preventing unauthenticated remote execution.
+7. **Judge-Ready Project Explorer & Live Diagnostics (Phase 16):** Collapsible 3-column repository explorer with bounded file tree, AST symbol navigation, and direct FalkorDB graph relationship linkage; real-time operational diagnostics replacing legacy roadmap cards; dual-mode graph explorer (Path View vs Network Overview) with bidirectional graph/source synchronization; and an accessible, high-contrast light/dark design system (#0B1F3A primary navy).
 
 ---
 
@@ -137,7 +138,7 @@ FalkorDB performs non-trivial, graph-native computation essential to NexusAct:
 | **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
 | **Public Connectors** | Hugging Face, OpenAlex, Crossref, Wikidata | Fixed API Constants |
 | **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
-| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **118/118 python, 13/13 vitest — all clean** |
+| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **136/136 python, 18/18 vitest — all clean** |
 
 ---
 

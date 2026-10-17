@@ -1,6 +1,8 @@
 """Repository ingestion and multi-repository management API endpoints."""
 
+import ast
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -208,6 +210,64 @@ def get_source_metadata(repo_id: str) -> SourceMetadataOutput:
     )
 
 
+IGNORE_DIRS = {
+    ".git",
+    ".github",
+    ".venv",
+    "venv",
+    "env",
+    "node_modules",
+    "dist",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".falkordb",
+    "data",
+    "htmlcov",
+    ".egg-info",
+    ".idea",
+    ".vscode",
+}
+
+LANG_MAP = {
+    ".py": "python",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".json": "json",
+    ".md": "markdown",
+    ".toml": "toml",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".css": "css",
+    ".html": "html",
+    ".sh": "bash",
+    ".sql": "sql",
+    ".txt": "text",
+}
+
+
+class SymbolOutlineItem(BaseModel):
+    name: str
+    kind: str  # "function" | "class" | "method"
+    start_line: int
+    end_line: int
+    signature: Optional[str] = None
+    docstring: Optional[str] = None
+
+
+class FileGraphLinkage(BaseModel):
+    has_graph_module: bool = False
+    module_id: Optional[str] = None
+    module_name: Optional[str] = None
+    dependencies: List[str] = Field(default_factory=list)
+    dependents: List[str] = Field(default_factory=list)
+    modeled_level: str = "module_level"
+
+
 class FileContentResponse(BaseModel):
     file_path: str
     repository_id: str
@@ -217,6 +277,29 @@ class FileContentResponse(BaseModel):
     total_lines: int
     content: str
     language: str
+    symbols: List[SymbolOutlineItem] = Field(default_factory=list)
+    graph_linkage: Optional[FileGraphLinkage] = None
+
+
+class FileTreeNode(BaseModel):
+    name: str
+    path: str
+    type: str  # "file" or "directory"
+    size_bytes: Optional[int] = None
+    language: Optional[str] = None
+    has_graph_module: bool = False
+    module_id: Optional[str] = None
+    children: Optional[List["FileTreeNode"]] = None
+
+
+class FileTreeResponse(BaseModel):
+    repository_id: str
+    repository_name: str
+    commit_sha: str
+    total_files: int
+    total_directories: int
+    tree: List[FileTreeNode]
+    truncated: bool = False
 
 
 @router.get("/snapshot/{repo_id}", response_model=SourceSnapshot)
@@ -234,24 +317,21 @@ def get_repository_snapshot(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/file-content", response_model=FileContentResponse)
-def get_file_content(
+@router.get("/file-tree", response_model=FileTreeResponse)
+def get_file_tree(
     repo_id: str = Query(..., description="Repository identifier"),
-    file_path: str = Query(..., description="Relative file path within repository"),
-    start_line: int = Query(default=1, ge=1),
-    end_line: int = Query(default=150, ge=1),
-) -> FileContentResponse:
-    """Safely retrieves lines of code from a file in the repository's pinned snapshot."""
+    subpath: Optional[str] = Query(default=None, description="Optional relative directory path"),
+    max_depth: int = Query(default=5, ge=1, le=10),
+    limit: int = Query(default=800, ge=10, le=3000),
+) -> FileTreeResponse:
+    """Safely retrieves repository directory hierarchy bounded by depth and entry count."""
     record = repo_registry.get_repository(repo_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"Repository '{repo_id}' not found.")
 
-    # Determine base directory
     if record.source_type == SourceType.LOCAL:
         base_dir = Path(record.url_or_path).resolve()
     else:
-        from backend.app.sources.github_fetcher import GitHubRepoFetcher
-
         fetcher = GitHubRepoFetcher()
         raw_url = record.canonical_source or record.url_or_path
         val_url = PublicGitHubUrl.parse_and_validate(raw_url)
@@ -260,7 +340,152 @@ def get_file_content(
     if not base_dir.exists():
         raise HTTPException(status_code=404, detail=f"Checkout for repository '{repo_id}' not found on disk.")
 
-    # Prevent directory traversal attacks
+    scan_dir = base_dir
+    if subpath:
+        clean_sub = subpath.replace("\\", "/").lstrip("/")
+        target_sub = (base_dir / clean_sub).resolve()
+        try:
+            target_sub.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid subpath (escapes repository root).")
+        if not target_sub.exists() or not target_sub.is_dir():
+            raise HTTPException(status_code=404, detail=f"Directory '{subpath}' not found.")
+        scan_dir = target_sub
+
+    # Retrieve graph module map for this repository
+    graph_modules: Dict[str, str] = {}
+    try:
+        rows = graph_client.query(
+            "MATCH (m:Module) RETURN m.id, m.name, m.path",
+            graph_name=record.graph_name,
+        )
+        for r in rows:
+            m_id, m_name, m_path = r[0], r[1], r[2]
+            if m_path:
+                norm_p = m_path.replace("\\", "/").lstrip("/")
+                graph_modules[norm_p] = m_id
+            if m_name:
+                graph_modules[m_name] = m_id
+    except Exception as e:
+        logger.debug("Failed querying module map for %s: %s", repo_id, e)
+
+    file_count = 0
+    dir_count = 0
+    is_truncated = False
+
+    def scan_level(current_path: Path, current_depth: int) -> List[FileTreeNode]:
+        nonlocal file_count, dir_count, is_truncated
+        if current_depth > max_depth or is_truncated:
+            return []
+
+        try:
+            items = list(current_path.iterdir())
+        except (PermissionError, OSError):
+            return []
+
+        dirs_list = []
+        files_list = []
+
+        for item in items:
+            name = item.name
+            if name.startswith(".") and name not in (".env.example", ".gitignore"):
+                continue
+            if name in IGNORE_DIRS:
+                continue
+
+            try:
+                rel = item.relative_to(base_dir).as_posix()
+            except ValueError:
+                continue
+
+            if item.is_dir():
+                dirs_list.append((name, rel, item))
+            elif item.is_file():
+                files_list.append((name, rel, item))
+
+        dirs_list.sort(key=lambda x: x[0].lower())
+        files_list.sort(key=lambda x: x[0].lower())
+
+        entries: List[FileTreeNode] = []
+
+        for d_name, d_rel, d_path in dirs_list:
+            dir_count += 1
+            children = scan_level(d_path, current_depth + 1)
+            entries.append(
+                FileTreeNode(
+                    name=d_name,
+                    path=d_rel,
+                    type="directory",
+                    children=children,
+                )
+            )
+
+        for f_name, f_rel, f_path in files_list:
+            if file_count >= limit:
+                is_truncated = True
+                break
+            file_count += 1
+            try:
+                size = f_path.stat().st_size
+            except OSError:
+                size = 0
+            ext = f_path.suffix.lower()
+            lang = LANG_MAP.get(ext, "text")
+            has_mod = f_rel in graph_modules or f_path.stem in graph_modules
+            mod_id = graph_modules.get(f_rel) or graph_modules.get(f_path.stem)
+
+            entries.append(
+                FileTreeNode(
+                    name=f_name,
+                    path=f_rel,
+                    type="file",
+                    size_bytes=size,
+                    language=lang,
+                    has_graph_module=has_mod,
+                    module_id=mod_id,
+                )
+            )
+
+        return entries
+
+    tree = scan_level(scan_dir, 1)
+
+    return FileTreeResponse(
+        repository_id=record.id,
+        repository_name=record.name,
+        commit_sha=record.commit_sha,
+        total_files=file_count,
+        total_directories=dir_count,
+        tree=tree,
+        truncated=is_truncated,
+    )
+
+
+@router.get("/file-content", response_model=FileContentResponse)
+def get_file_content(
+    repo_id: str = Query(..., description="Repository identifier"),
+    file_path: str = Query(..., description="Relative file path within repository"),
+    start_line: int = Query(default=1, ge=1),
+    end_line: int = Query(default=200, ge=1),
+) -> FileContentResponse:
+    """Safely retrieves lines of code from a file in the repository's pinned snapshot
+    with symbol outline and graph linkage.
+    """
+    record = repo_registry.get_repository(repo_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Repository '{repo_id}' not found.")
+
+    if record.source_type == SourceType.LOCAL:
+        base_dir = Path(record.url_or_path).resolve()
+    else:
+        fetcher = GitHubRepoFetcher()
+        raw_url = record.canonical_source or record.url_or_path
+        val_url = PublicGitHubUrl.parse_and_validate(raw_url)
+        base_dir = fetcher.get_repo_cache_dir(val_url.owner, val_url.repo).resolve()
+
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Checkout for repository '{repo_id}' not found on disk.")
+
     clean_rel = file_path.replace("\\", "/").lstrip("/")
     target_file = (base_dir / clean_rel).resolve()
     try:
@@ -272,7 +497,8 @@ def get_file_content(
         raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in repository.")
 
     try:
-        lines = target_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        full_text = target_file.read_text(encoding="utf-8", errors="replace")
+        lines = full_text.splitlines()
         total_lines = len(lines)
         s_line = max(1, start_line)
         e_line = min(total_lines, max(s_line, end_line))
@@ -280,19 +506,126 @@ def get_file_content(
         content = "\n".join(slice_lines)
 
         ext = target_file.suffix.lower()
-        lang_map = {
-            ".py": "python",
-            ".ts": "typescript",
-            ".tsx": "typescript",
-            ".js": "javascript",
-            ".jsx": "javascript",
-            ".json": "json",
-            ".md": "markdown",
-            ".toml": "toml",
-            ".yml": "yaml",
-            ".yaml": "yaml",
-        }
-        language = lang_map.get(ext, "text")
+        language = LANG_MAP.get(ext, "text")
+
+        # ── Parse symbol outline ─────────────────────────────────────
+        symbols: List[SymbolOutlineItem] = []
+        if ext == ".py":
+            try:
+                tree = ast.parse(full_text, filename=clean_rel)
+                for node in tree.body:
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        args_str = ", ".join(a.arg for a in node.args.args[:5])
+                        symbols.append(
+                            SymbolOutlineItem(
+                                name=node.name,
+                                kind="function",
+                                start_line=node.lineno,
+                                end_line=getattr(node, "end_lineno", node.lineno),
+                                signature=f"{node.name}({args_str})",
+                                docstring=ast.get_docstring(node),
+                            )
+                        )
+                    elif isinstance(node, ast.ClassDef):
+                        symbols.append(
+                            SymbolOutlineItem(
+                                name=node.name,
+                                kind="class",
+                                start_line=node.lineno,
+                                end_line=getattr(node, "end_lineno", node.lineno),
+                                signature=f"class {node.name}",
+                                docstring=ast.get_docstring(node),
+                            )
+                        )
+                        for item in node.body:
+                            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                                args_str = ", ".join(a.arg for a in item.args.args[:4])
+                                symbols.append(
+                                    SymbolOutlineItem(
+                                        name=f"{node.name}.{item.name}",
+                                        kind="method",
+                                        start_line=item.lineno,
+                                        end_line=getattr(item, "end_lineno", item.lineno),
+                                        signature=f"{item.name}({args_str})",
+                                        docstring=ast.get_docstring(item),
+                                    )
+                                )
+            except Exception as e:
+                logger.debug("AST outline parse error for %s: %s", clean_rel, e)
+        elif ext in (".ts", ".tsx", ".js", ".jsx"):
+            try:
+                for line_idx, line in enumerate(lines, 1):
+                    fn_match = re.search(r"(?:export\s+)?(?:const|function|async function)\s+([A-Za-z0-9_]+)", line)
+                    cls_match = re.search(r"(?:export\s+)?class\s+([A-Za-z0-9_]+)", line)
+                    if fn_match:
+                        name = fn_match.group(1)
+                        if name not in ("if", "for", "switch", "while"):
+                            symbols.append(
+                                SymbolOutlineItem(
+                                    name=name,
+                                    kind="function",
+                                    start_line=line_idx,
+                                    end_line=line_idx,
+                                    signature=line.strip()[:60],
+                                )
+                            )
+                    elif cls_match:
+                        symbols.append(
+                            SymbolOutlineItem(
+                                name=cls_match.group(1),
+                                kind="class",
+                                start_line=line_idx,
+                                end_line=line_idx,
+                                signature=f"class {cls_match.group(1)}",
+                            )
+                        )
+            except Exception:
+                pass
+
+        # ── Link to active FalkorDB graph relationships ───────────────
+        graph_link = FileGraphLinkage(has_graph_module=False)
+        try:
+            m_rows = graph_client.query(
+                """
+                MATCH (m:Module)
+                WHERE m.path = $p OR m.name = $p OR m.name CONTAINS $stem
+                RETURN m.id, m.name
+                LIMIT 1
+                """,
+                params={"p": clean_rel, "stem": target_file.stem},
+                graph_name=record.graph_name,
+            )
+            if m_rows:
+                mid, mname = m_rows[0][0], m_rows[0][1]
+                graph_link.has_graph_module = True
+                graph_link.module_id = mid
+                graph_link.module_name = mname
+
+                deps_rows = graph_client.query(
+                    """
+                    MATCH (m:Module)-[:DEPENDS_ON]->(d:Module)
+                    WHERE m.id = $mid
+                    RETURN d.name, d.id
+                    LIMIT 20
+                    """,
+                    params={"mid": mid},
+                    graph_name=record.graph_name,
+                )
+                graph_link.dependencies = [r[0] or r[1] for r in deps_rows]
+
+                caller_rows = graph_client.query(
+                    """
+                    MATCH (c:Module)-[:DEPENDS_ON]->(m:Module)
+                    WHERE m.id = $mid
+                    RETURN c.name, c.id
+                    LIMIT 20
+                    """,
+                    params={"mid": mid},
+                    graph_name=record.graph_name,
+                )
+                graph_link.dependents = [r[0] or r[1] for r in caller_rows]
+        except Exception as e:
+            logger.debug("Failed querying graph linkage for %s: %s", clean_rel, e)
 
         return FileContentResponse(
             file_path=clean_rel,
@@ -303,6 +636,8 @@ def get_file_content(
             total_lines=total_lines,
             content=content,
             language=language,
+            symbols=symbols,
+            graph_linkage=graph_link,
         )
     except Exception as e:
         logger.error("Failed reading file %s: %s", target_file, e)

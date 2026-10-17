@@ -45,4 +45,15 @@ export interface SystemStatusData {
   edge_count: number;
   mcp_server_configured: boolean;
   mcp_port: number;
+  active_repo_id?: string;
+  active_repo_name?: string;
+  commit_sha?: string;
+  freshness_status?: string;
+  llm_provider?: string;
+  llm_configured?: boolean;
+  action_service_configured?: boolean;
+  action_approval_required?: boolean;
+  mcp_tools?: string[];
+  subsystem_health?: Record<string, string>;
 }
+

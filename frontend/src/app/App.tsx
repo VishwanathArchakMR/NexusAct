@@ -15,8 +15,9 @@ export const App: React.FC = () => {
 
   const tabs: Array<{ id: AppViewMode; label: string; icon: React.ReactNode }> = [
     { id: "software", label: "Software Graph", icon: <GitBranch size={14} /> },
-    { id: "universal", label: "Universal GAF", icon: <Globe size={14} /> },
+    { id: "universal", label: "Agent Investigation (Universal GAF)", icon: <Globe size={14} /> },
     { id: "system", label: "Diagnostics", icon: <Activity size={14} /> },
+
   ];
 
   return (
