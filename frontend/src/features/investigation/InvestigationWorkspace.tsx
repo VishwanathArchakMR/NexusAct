@@ -27,6 +27,7 @@ import { CounterfactualDiff } from "./CounterfactualDiff";
 import { IssueProposalCard } from "./IssueProposalCard";
 import { CodeInspector } from "./CodeInspector";
 import { PanelExplanation } from "./PanelExplanation";
+import { FraudInvestigationPanel } from "./FraudInvestigationPanel";
 
 import {
   Sparkles,
@@ -259,7 +260,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       setQuestion("Check dependencies for security advisories and trace if vulnerable packages are reachable from our code.");
       setActiveTab("security");
     } else if (mode === "fraud_demo") {
-      setQuestion("Detect circular money movement loops and shared device fraud indicators across accounts.");
+      setQuestion("Detect multi-hop circular fund routing, shared devices, and velocity bursts in FalkorDB.");
       setActiveTab("fraud");
     }
   };
@@ -689,7 +690,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           </span>
         </div>
 
-        {/* Workflow 4: Fraud Pattern Demo */}
+        {/* Workflow 4: Fraud Investigation */}
         <div
           onClick={() => handleModeChange("fraud_demo")}
           style={{
@@ -697,12 +698,12 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             borderRadius: "8px",
             border: `2px solid ${
               investigationMode === "fraud_demo"
-                ? "#d97706"
+                ? "#2563eb"
                 : "var(--border-subtle)"
             }`,
             backgroundColor:
               investigationMode === "fraud_demo"
-                ? "rgba(217, 119, 6, 0.08)"
+                ? "rgba(37, 99, 235, 0.08)"
                 : "var(--bg-card)",
             cursor: "pointer",
             transition: "all 0.15s ease",
@@ -713,15 +714,15 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, fontSize: "0.86rem", color: "var(--text-primary)" }}>
-              <DollarSign size={16} color="#d97706" />
-              Fraud Topology Demo
+              <DollarSign size={16} color="#2563eb" />
+              Fraud Investigation
             </span>
             {investigationMode === "fraud_demo" && (
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#d97706" }}>ACTIVE</span>
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#2563eb" }}>ACTIVE</span>
             )}
           </div>
           <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)" }}>
-            Synthetic financial graph: circular routing cycles, shared devices, and benign controls.
+            Real financial records: detect circular routing loops, shared devices/IPs, and benign controls in FalkorDB.
           </span>
         </div>
       </div>
@@ -1149,7 +1150,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       )}
 
       {/* ── Investigation Summary Card ── */}
-      {report && report.status === "COMPLETED" && (!report.repository_id || report.repository_id === selectedRepoId) && (
+      {activeTab !== "fraud" && report && report.status === "COMPLETED" && (!report.repository_id || report.repository_id === selectedRepoId) && (
         <div
           style={{
             backgroundColor: "var(--bg-card)",
@@ -1278,12 +1279,12 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                     fontWeight: 600,
                     borderRadius: "5px",
                     border: "1px solid var(--border-subtle)",
-                    backgroundColor: activeTab === "fraud" ? "#fef3c7" : "var(--bg-primary)",
-                    color: activeTab === "fraud" ? "#b45309" : "var(--text-secondary)",
+                    backgroundColor: (activeTab as string) === "fraud" ? "#fef3c7" : "var(--bg-primary)",
+                    color: (activeTab as string) === "fraud" ? "#b45309" : "var(--text-secondary)",
                     cursor: "pointer",
                   }}
                 >
-                  Fraud Cycles
+                  Fraud Investigation
                 </button>
               )}
               <button
@@ -1760,7 +1761,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               role="tab"
               aria-selected={activeTab === "fraud"}
               onClick={() => setActiveTab("fraud")}
-              title={isSidebarCollapsed ? "Fraud Topology Demo" : undefined}
+              title={isSidebarCollapsed ? "Fraud Investigation" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1769,23 +1770,18 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
                 borderRadius: "6px",
                 border: "none",
-                borderLeft: activeTab === "fraud" ? "3px solid #d97706" : "3px solid transparent",
-                backgroundColor: activeTab === "fraud" ? "rgba(217, 119, 6, 0.08)" : "transparent",
-                color: activeTab === "fraud" ? "#d97706" : "var(--text-secondary)",
+                borderLeft: activeTab === "fraud" ? "3px solid #2563eb" : "3px solid transparent",
+                backgroundColor: activeTab === "fraud" ? "rgba(37, 99, 235, 0.08)" : "transparent",
+                color: activeTab === "fraud" ? "#2563eb" : "var(--text-secondary)",
                 cursor: "pointer",
                 fontSize: "0.8rem",
                 fontWeight: activeTab === "fraud" ? 700 : 500,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
-                <DollarSign size={15} color="#d97706" />
-                {!isSidebarCollapsed && <span>Fraud Topology</span>}
+                <DollarSign size={15} color="#2563eb" />
+                {!isSidebarCollapsed && <span>Fraud Investigation</span>}
               </div>
-              {!isSidebarCollapsed && report?.fraud_result && (
-                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "#fef3c7", color: "#b45309" }}>
-                  {report.fraud_result.patterns_detected.length} patterns
-                </span>
-              )}
             </button>
           </div>
         </aside>
@@ -2004,174 +2000,21 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
           <PanelExplanation
             panelId="fraud"
-            investigationId={report?.investigation_id || "inv:fraud_demo"}
+            investigationId="inv:fraud_financial"
             question={question}
             targetId={selectedModule}
-            repoId="nexusact_fraud_demo"
-            commitSha={snapshot?.commit_sha}
+            repoId="financial_network"
             dataSummary={{
-              patterns_detected_count: report?.fraud_result?.patterns_detected?.length || 0,
-              total_suspicious_volume_usd: report?.fraud_result?.total_suspicious_volume_usd || 0,
-              benign_controls_count: report?.fraud_result?.benign_controls?.length || 0,
-              risk_indicator: report?.fraud_result?.risk_indicator || "UNKNOWN",
+              workflow: "fraud_investigation",
+              mode: "financial_network",
             }}
           />
-          <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-              <div>
-                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#d97706", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <DollarSign size={18} />
-                  Synthetic Financial Graph Fraud Topology (nexusact_fraud_demo)
-                </h3>
-                <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
-                  Multi-hop circular transfer cycles, shared device hardware fingerprints, and verified benign controls in FalkorDB.
-                </p>
-              </div>
-              {report?.fraud_result && (
-                <span
-                  style={{
-                    fontSize: "0.74rem",
-                    fontWeight: 700,
-                    padding: "0.2rem 0.6rem",
-                    borderRadius: "20px",
-                    backgroundColor: "#fee2e2",
-                    color: "#b91c1c",
-                  }}
-                >
-                  Risk: {report.fraud_result.risk_indicator}
-                </span>
-              )}
-            </div>
-
-            {/* Synthetic Disclaimer Banner */}
-            <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.78rem", marginBottom: "1rem" }}>
-              <strong>Synthetic Demonstration Notice:</strong> This workflow operates exclusively on deterministic synthetic records in FalkorDB graph <code>nexusact_fraud_demo</code>. No real individuals, accounts, or banks are represented.
-            </div>
-
-            {/* Transparent Risk Score Breakdown */}
-            {report?.fraud_result?.risk_factors && report.fraud_result.risk_factors.length > 0 && (
-              <div style={{ padding: "0.85rem", borderRadius: "6px", backgroundColor: "var(--bg-muted)", border: "1px solid var(--border-subtle)", marginBottom: "1.25rem" }}>
-                <h5 style={{ fontSize: "0.8rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "var(--text-primary)" }}>
-                  Transparent Risk Factor Contributions (Derived directly from FalkorDB Cypher queries)
-                </h5>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                  {report.fraud_result.risk_factors.map((rf, fIdx) => (
-                    <div key={fIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", padding: "0.3rem 0.5rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
-                      <div>
-                        <strong style={{ color: "var(--text-primary)" }}>{rf.factor.replace(/_/g, " ")}</strong>
-                        <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>— {rf.evidence}</span>
-                      </div>
-                      <div style={{ fontWeight: 700, color: "#b91c1c", fontFamily: "var(--font-mono)" }}>
-                        +{((rf.contribution ?? rf.weight) * 100).toFixed(0)}%
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.6rem", paddingTop: "0.4rem", borderTop: "1px solid var(--border-subtle)", fontSize: "0.8rem", fontWeight: 700 }}>
-                  <span>Composite Risk Indicator Score:</span>
-                  <span style={{ color: "#b91c1c", fontFamily: "var(--font-mono)" }}>
-                    {((report.fraud_result.risk_score ?? 0.9) * 100).toFixed(0)}% (Elevated Suspicious Cluster)
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {report?.fraud_result?.patterns_detected && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
-                <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-                  Detected Suspicious Topology Patterns ({report.fraud_result.patterns_detected.length})
-                </h4>
-                {report.fraud_result.patterns_detected.map((pat, idx) => {
-                  const flowAmt = pat.amount_involved ?? pat.total_volume_usd ?? 0;
-                  const patDesc = pat.details ?? pat.description ?? "";
-                  const pathNodes = pat.participating_nodes ?? pat.multi_hop_path ?? pat.involved_nodes ?? [];
-                  return (
-                    <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type.replace(/_/g, " ")}</strong>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
-                            Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
-                          </span>
-                        </div>
-                        {flowAmt > 0 && (
-                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                            Flow: ${flowAmt.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{patDesc}</p>
-
-                      {/* Supporting Transaction Evidence */}
-                      {pat.transaction_evidence && pat.transaction_evidence.length > 0 && (
-                        <div style={{ marginTop: "0.4rem", marginBottom: "0.4rem" }}>
-                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>Supporting Transactions:</span>
-                          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
-                            {pat.transaction_evidence.map((tx: any, tIdx: number) => (
-                              <div key={tIdx} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontSize: "0.72rem", fontFamily: "var(--font-mono)" }}>
-                                <span>{tx.from} → {tx.to}</span>
-                                <strong style={{ color: "var(--text-primary)", marginLeft: "0.35rem" }}>${Number(tx.amount).toLocaleString()}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Path Nodes with Graph Jump */}
-                      {pathNodes.length > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
-                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path Chain:</span>
-                          {pathNodes.map((node: string, i: number) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                setSelectedModule(node);
-                                loadGraph(node, "nexusact_fraud_demo");
-                                setActiveTab("graph");
-                              }}
-                              style={{
-                                padding: "0.15rem 0.45rem",
-                                borderRadius: "4px",
-                                backgroundColor: "var(--bg-card)",
-                                border: "1px solid var(--border-subtle)",
-                                fontFamily: "var(--font-mono)",
-                                fontSize: "0.72rem",
-                                cursor: "pointer",
-                                color: "var(--text-primary)",
-                              }}
-                              title="Click to view node in GraphCanvas"
-                            >
-                              {node}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Benign Control Verification */}
-            {report?.fraud_result?.benign_controls && (
-              <div>
-                <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "#15803d" }}>
-                  Verified Benign Control Accounts (False-Positive Suppression)
-                </h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-                  {report.fraud_result.benign_controls.map((ctrl, idx) => (
-                    <div key={idx} style={{ padding: "0.75rem", borderRadius: "6px", border: "1px solid #86efac", backgroundColor: "#f0fdf4" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <strong style={{ fontSize: "0.82rem", color: "#15803d", fontFamily: "var(--font-mono)" }}>{ctrl.account_id}</strong>
-                        <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#15803d" }}>VERIFIED BENIGN</span>
-                      </div>
-                      <p style={{ fontSize: "0.74rem", color: "#166534", margin: "0.3rem 0 0 0" }}>{ctrl.status_reason || ctrl.reason}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <FraudInvestigationPanel
+            onOpenSourceFile={(fp) => {
+              setInspectorFilePath(fp);
+              setActiveTab("code");
+            }}
+          />
         </div>
       )}
 

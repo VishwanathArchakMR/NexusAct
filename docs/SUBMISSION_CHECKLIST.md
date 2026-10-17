@@ -87,10 +87,14 @@ Detailed demo steps and questions are available in [`docs/DEMO_SCRIPT.md`](DEMO_
 - Pinned dependency manifest coverage (`requirements.txt`, `package.json`).
 - Honest disclosure of zero known advisories vs simulated test fixtures.
 
-### 5. Isolated Synthetic Fraud Investigation (`nexusact_investigate_fraud`)
-- Bounded to `nexusact_fraud_demo`.
-- Detects 3-hop money redirection loop ($27,700) and shared device indicators.
-- Benign control baseline accounts (`acc:201`, `acc:202`) verified as non-fraudulent.
+### 5. Real-Data Financial Fraud Investigation Engine (Phase 21)
+- User transaction dataset ingestion: CSV/TSV/JSON upload with automatic delimiter sniffing, column profiling, and schema mapping.
+- Isolated FalkorDB graph namespaces (`fin_<dataset_id>`).
+- Direct Cypher reasoning: 3–5 hop circular transfer rings ($28,500), shared hardware devices (`DEV_IPHONE_99`), client IPs (`198.51.100.12`).
+- Visual semantics: Persistent node legend with semantic colors (Account `#2563eb`, Transaction `#7c3aed`, Device `#0d9488`, IP `#d97706`, Merchant `#16a34a`).
+- Benign control baseline accounts (`ACC_SAFE_1`, `ACC_SAFE_2`) verified as non-fraudulent.
+- Workspace context isolation: Codebase Git commits and file trees strictly isolated from financial investigation.
+- Strict read-only guarantee with clear recommendations for human compliance review.
 
 ### 6. Cryptographically Bound Action Execution
 - Deterministic SHA-256 payload hash binding.

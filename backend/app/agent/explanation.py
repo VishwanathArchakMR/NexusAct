@@ -324,35 +324,51 @@ def generate_fallback_explanation(req: PanelExplanationRequest) -> PanelExplanat
         next_step = "Upgrade flagged packages to the fixed versions indicated in the advisory details."
 
     elif panel == "fraud":
-        rings_count = (
-            data.get("rings_count")
-            or data.get("patterns_detected_count")
-            or len(data.get("patterns_detected", []))
-            or 0
-        )
-        devices_count = data.get("shared_devices_count") or data.get("shared_infrastructure_count") or 1
-        summary = (
-            f"Synthetic Fraud Topology analysis detected {rings_count} circular routing ring(s) "
-            f"and {devices_count} shared infrastructure cluster(s)."
-        )
-        what_looking = "Multi-Hop Financial Graph Fraud Topology (Isolated Demo on `nexusact_fraud_demo`)."
-        what_found = (
-            f"Detected {rings_count} circular transfer rings (e.g. A -> B -> C -> A) "
-            f"and {devices_count} accounts sharing device identifiers."
-        )
-        why_matters = (
-            "Demonstrates graph-native topological pattern matching for synthetic fraud rings and mule networks."
-        )
-        evidence = [
-            "Isolated FalkorDB graph: nexusact_fraud_demo",
-            "Multi-hop circular traversal query [:SENDS_TO*3..5]",
-            "Shared device infrastructure query (a)-[:USES_DEVICE]->(d)",
-        ]
-        conf = (
-            "Explicitly synthetic demonstration data bounded to isolated demo graph; "
-            "zero crossover into codebase graphs."
-        )
-        next_step = "Inspect the ring path visualization in Graph View to review transaction flow timestamps."
+        has_no_data = data.get("no_data_available", False) or data.get("dataset_name") == "No Active Dataset"
+        ds_name = data.get("dataset_name") or "Financial Dataset"
+        graph_name = data.get("graph_name") or "isolated financial graph"
+
+        if has_no_data:
+            summary = "No financial transaction dataset is currently loaded in FalkorDB."
+            what_looking = "Financial Transaction Network Investigation Workspace."
+            what_found = "No transaction records present. Ready to import authorized transaction CSV or JSON files."
+            why_matters = (
+                "Transaction network analysis requires structured financial transfer records "
+                "to discover multi-hop flows."
+            )
+            evidence = ["FalkorDB dataset registry: No active dataset"]
+            conf = "Awaiting dataset import; zero ungrounded facts or simulated metrics presented."
+            next_step = "Upload a transaction CSV/JSON or load the sample AML benchmark dataset to begin."
+        else:
+            rings_count = data.get("cycles_count") or data.get("patterns_detected_count") or 0
+            shared_count = data.get("shared_entities_count") or data.get("shared_infrastructure_count") or 0
+            vol = float(data.get("total_volume_usd") or 0.0)
+            risk_ind = data.get("risk_indicator", "LOW_NORMAL")
+
+            summary = (
+                f"Financial Transaction graph analysis on '{ds_name}' detected {rings_count} circular routing ring(s) "
+                f"and {shared_count} shared infrastructure cluster(s) (Risk: {risk_ind})."
+            )
+            what_looking = f"Financial Transaction Network Investigation on isolated FalkorDB graph '{graph_name}'."
+            what_found = (
+                f"FalkorDB Cypher queries evaluated transaction flows across accounts: "
+                f"discovered {rings_count} directed cycle(s) and {shared_count} multi-account shared device/IP link(s) "
+                f"spanning ${vol:,.2f} in total volume."
+            )
+            why_matters = (
+                "Identifies hidden multi-hop money routing loops and shared identity infrastructure "
+                "that are invisible in traditional tabular ledger audits."
+            )
+            evidence = [
+                f"FalkorDB graph namespace: {graph_name}",
+                f"Directed cycle query: MATCH (a)-[:SENDS_TO*3..5]->(a) ({rings_count} found)",
+                f"Shared device/IP query: MATCH (a)-[:USES_DEVICE]->(d)<-[:USES_DEVICE]-(b) ({shared_count} found)",
+            ]
+            conf = (
+                "Read-only topological graph analysis. Directed cycles represent structural patterns "
+                "requiring human compliance review, not automated proof of financial fraud."
+            )
+            next_step = "Inspect the highlighted cycle in the Transaction Graph and review underlying transfer records."
 
     else:
         summary = f"Analysis of '{target}' based on graph data and findings."

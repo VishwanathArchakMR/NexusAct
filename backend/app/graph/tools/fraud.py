@@ -38,12 +38,15 @@ class BenignControlAudit(BaseModel):
 
 class FraudInvestigationInput(BaseModel):
     question: Optional[str] = Field(default=None, description="Investigation inquiry")
-    target_account_id: Optional[str] = Field(default=None, description="Starting synthetic account ID")
-    graph_name: Optional[str] = Field(default=FRAUD_DEMO_GRAPH, description="Synthetic fraud graph name")
+    target_account_id: Optional[str] = Field(default=None, description="Starting account ID")
+    graph_name: Optional[str] = Field(default=None, description="Financial dataset graph name")
+    dataset_id: Optional[str] = Field(default=None, description="Optional registered financial dataset ID")
 
 
 class FraudInvestigationOutput(BaseModel):
     graph_name: str
+    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
     investigated_account: Optional[str] = None
     investigation_question: Optional[str] = None
     patterns_detected: List[FraudPatternFinding] = Field(default_factory=list)
@@ -63,6 +66,7 @@ class FraudInvestigationOutput(BaseModel):
     uncertainties: List[str] = Field(default_factory=list)
     recommended_action: str
     evidence_chain: List[str] = Field(default_factory=list)
+    is_read_only: bool = True
 
 
 def seed_synthetic_fraud_graph(client: Optional[FalkorDBClient] = None) -> Dict[str, Any]:
@@ -143,10 +147,80 @@ def execute_investigate_fraud(
     client: Optional[FalkorDBClient] = None,
 ) -> FraudInvestigationOutput:
     """
-    Executes a multi-hop graph traversal in FalkorDB to detect synthetic fraud cycles and shared infrastructure.
-    Guarantees that benign controls are verified and not incorrectly classified as fraud.
+    Executes a multi-hop graph traversal in FalkorDB to detect fraud cycles and shared infrastructure.
+    Operates on real ingested datasets when available, or isolated demo graph for tests.
     """
+    from backend.app.finance.dataset_registry import dataset_registry
+    from backend.app.finance.investigation_service import run_financial_investigation
+
     cli = client or graph_client
+
+    # 1. Check if a registered dataset is explicitly requested
+    target_ds = None
+    if payload.dataset_id:
+        target_ds = dataset_registry.get_dataset(payload.dataset_id)
+    elif payload.graph_name and payload.graph_name.startswith("fin_"):
+        target_ds = dataset_registry.get_dataset(payload.graph_name)
+
+    if target_ds:
+        res = run_financial_investigation(
+            dataset_id=target_ds.dataset_id,
+            question=payload.question,
+            target_account=payload.target_account_id,
+            client=cli,
+        )
+        converted_patterns = []
+        for f in res.findings:
+            converted_patterns.append(
+                FraudPatternFinding(
+                    pattern_type=f.category,
+                    severity=f.severity,
+                    description=f.plain_english_summary,
+                    details=f.limitations,
+                    involved_accounts=f.affected_accounts,
+                    involved_nodes=f.affected_accounts,
+                    participating_nodes=f.multi_hop_path or f.affected_accounts,
+                    multi_hop_path=f.multi_hop_path or [],
+                    total_volume_usd=f.amount_involved_usd,
+                    amount_involved=f.amount_involved_usd,
+                    risk_score=res.risk_score,
+                    evidence_criteria=f.cypher_query_used,
+                    transaction_evidence=f.supporting_records,
+                )
+            )
+        converted_controls = [
+            BenignControlAudit(
+                account_id=b.account_id,
+                pattern_status=b.status,
+                status=b.status,
+                reason=b.reason,
+                status_reason=b.reason,
+            )
+            for b in res.benign_controls
+        ]
+        return FraudInvestigationOutput(
+            graph_name=res.graph_name,
+            dataset_id=res.dataset_id,
+            dataset_name=res.dataset_name,
+            investigated_account=payload.target_account_id,
+            investigation_question=payload.question,
+            patterns_detected=converted_patterns,
+            benign_controls=converted_controls,
+            multi_hop_paths_count=len(res.cycles_detected),
+            total_suspicious_volume_usd=sum(c.total_volume_usd for c in res.cycles_detected),
+            summary=res.summary,
+            risk_indicator=res.risk_indicator,
+            risk_score=res.risk_score,
+            risk_factors=[rf.model_dump() for rf in res.risk_factors],
+            is_synthetic_demonstration=target_ds.is_synthetic,
+            synthetic_disclaimer=target_ds.data_provenance_note,
+            uncertainties=res.limitations,
+            recommended_action="Review detected patterns with compliance team; read-only analysis.",
+            evidence_chain=[acc for f in res.findings for acc in f.affected_accounts],
+            is_read_only=True,
+        )
+
+    # 2. Backward-compatible fallback for synthetic demonstration graph
     graph = payload.graph_name or FRAUD_DEMO_GRAPH
 
     # Ensure graph is seeded if empty

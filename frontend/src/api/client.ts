@@ -389,5 +389,119 @@ export async function testLLMConnectivity(): Promise<import("../types/system").L
   );
 }
 
+// Financial Investigation Endpoints (Phase 21 GAF)
+export async function fetchFinancialDatasets(): Promise<import("../types/investigation").FinancialDatasetMetadata[]> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/datasets`;
+  const res = await fetch(url);
+  return handleResponse<import("../types/investigation").FinancialDatasetMetadata[]>(
+    res,
+    "Failed to fetch financial datasets"
+  );
+}
+
+export async function fetchActiveFinancialDataset(): Promise<import("../types/investigation").FinancialDatasetMetadata | null> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/datasets/active`;
+  const res = await fetch(url);
+  return handleResponse<import("../types/investigation").FinancialDatasetMetadata | null>(
+    res,
+    "Failed to fetch active financial dataset"
+  );
+}
+
+export async function activateFinancialDataset(datasetId: string): Promise<import("../types/investigation").FinancialDatasetMetadata> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/datasets/${encodeURIComponent(datasetId)}/activate`;
+  const res = await fetch(url, { method: "POST" });
+  return handleResponse<import("../types/investigation").FinancialDatasetMetadata>(
+    res,
+    "Failed to activate financial dataset"
+  );
+}
+
+export async function deleteFinancialDataset(datasetId: string): Promise<{ message: string }> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/datasets/${encodeURIComponent(datasetId)}`;
+  const res = await fetch(url, { method: "DELETE" });
+  return handleResponse<{ message: string }>(res, "Failed to delete financial dataset");
+}
+
+export async function previewFinancialDataset(file: File): Promise<import("../types/investigation").DatasetPreviewResponse> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/preview`;
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse<import("../types/investigation").DatasetPreviewResponse>(
+    res,
+    "Failed to preview financial dataset"
+  );
+}
+
+export async function ingestFinancialDataset(
+  file: File,
+  datasetName: string,
+  columnMapping?: import("../types/investigation").ColumnMapping
+): Promise<import("../types/investigation").FinancialDatasetMetadata> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/ingest`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("dataset_name", datasetName);
+  if (columnMapping) {
+    formData.append("column_mapping", JSON.stringify(columnMapping));
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse<import("../types/investigation").FinancialDatasetMetadata>(
+    res,
+    "Failed to ingest financial dataset"
+  );
+}
+
+export async function loadSampleBenchmarkDataset(): Promise<import("../types/investigation").FinancialDatasetMetadata> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/load-sample`;
+  const res = await fetch(url, { method: "POST" });
+  return handleResponse<import("../types/investigation").FinancialDatasetMetadata>(
+    res,
+    "Failed to load sample benchmark dataset"
+  );
+}
+
+export async function investigateFinancialDataset(
+  datasetId?: string,
+  maxHops = 4
+): Promise<import("../types/investigation").FinancialInvestigationResult> {
+  const url = `${config.apiBaseUrl}/api/v1/finance/investigate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataset_id: datasetId, max_hops: maxHops }),
+  });
+  return handleResponse<import("../types/investigation").FinancialInvestigationResult>(
+    res,
+    "Financial dataset investigation failed"
+  );
+}
+
+export async function fetchFinancialSubgraph(
+  datasetId?: string,
+  centerAccountId?: string,
+  depth = 2,
+  limit = 80
+): Promise<import("../types/investigation").SubgraphResponse> {
+  const params = new URLSearchParams();
+  if (centerAccountId) params.append("center_account_id", centerAccountId);
+  params.append("depth", depth.toString());
+  params.append("limit", limit.toString());
+  const dsParam = datasetId ? encodeURIComponent(datasetId) : "active";
+  const url = `${config.apiBaseUrl}/api/v1/finance/datasets/${dsParam}/subgraph?${params.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<import("../types/investigation").SubgraphResponse>(
+    res,
+    "Failed to load financial transaction subgraph"
+  );
+}
+
 
 

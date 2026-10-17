@@ -38,6 +38,7 @@ ENV/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.cache/
 
 # Node & Frontend
 node_modules/

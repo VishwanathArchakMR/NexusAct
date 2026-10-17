@@ -110,15 +110,23 @@ Open your browser to: **`http://localhost:5173`**.
 
 ---
 
-### Scene 7: Isolated Synthetic Fraud Investigation (`nexusact_investigate_fraud`)
-1. In the left navigation, click **Fraud Topology** under *Specialized Workflows*.
-2. Click **"Run Fraud Investigation"**:
-   - Operates strictly in the isolated `nexusact_fraud_demo` graph.
-   - **Prominent Synthetic Disclaimer**: Clearly declares all records and individuals are synthetic.
+### Scene 7: Real-Data Financial Fraud Investigation Engine (Phase 21)
+1. In the left navigation, click **Fraud Investigation** under *Specialized Workflows*.
+2. Observe the dedicated, isolated financial workspace:
+   - **Context Isolation**: Notice that codebase Git commit SHAs and repository overview cards are completely isolated from this tab.
+   - **Visual Semantics**: Notice the persistent node legend with dedicated domain colors: Account (`#2563eb`), Transaction (`#7c3aed`), Device (`#0d9488`), IP Address (`#d97706`), Merchant (`#16a34a`).
+3. Click **"Load Benchmark"** to instantly ingest the bundled anonymized AML Transaction Benchmark into an isolated FalkorDB graph namespace (`fin_<dataset_id>`):
+   - Alternatively, click **"Import Dataset"** to upload your own transaction CSV/TSV/JSON file with automatic delimiter sniffing, column profiling, and interactive schema mapping.
+4. Click **"Investigate Graph"**:
+   - Executes genuine multi-hop OpenCypher graph traversals across the isolated FalkorDB namespace.
    - **Multi-Hop Circular Transfer Ring**: Detects 3-hop money-laundering cycle:
-     $$\text{acc:101} \xrightarrow{\$10,000} \text{acc:102} \xrightarrow{\$9,500} \text{acc:103} \xrightarrow{\$8,200} \text{acc:101}$$
-   - **Shared Infrastructure**: Identifies `dev:iphone_xyz` shared between `acc:101` and `acc:103`.
-   - **Benign Control Baselines**: Audits linear consumer retail accounts (`acc:201`, `acc:202`), confirming they are classified as normal benign spending.
+     $$\text{ACC\_ALPHA} \xrightarrow{\$10,000} \text{ACC\_BETA} \xrightarrow{\$9,500} \text{ACC\_GAMMA} \xrightarrow{\$9,000} \text{ACC\_ALPHA}$$
+     with 90.0% capital retention and rapid velocity.
+   - **Shared Infrastructure**: Identifies hardware device `DEV_IPHONE_99` and client IP `198.51.100.12` shared between `ACC_ALPHA` and `ACC_BETA`.
+   - **Interactive Path Tracing**: Click on any finding to highlight the multi-hop route directly on the graph canvas.
+   - **Benign Control Baselines**: Audits linear consumer retail accounts (`ACC_SAFE_1`, `ACC_SAFE_2`), confirming they are classified as normal benign spending.
+   - **Transparent Risk Scoring**: Shows mathematical risk factor decomposition (Circular Routing 0.45, Shared Devices 0.25, Velocity Bursts 0.15).
+   - **Read-Only Compliance Guarantees**: Discloses strict read-only guarantees (no funds transfers or account freezes) and recommends qualified human compliance review.
 
 ---
 

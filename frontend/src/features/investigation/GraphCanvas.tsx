@@ -105,6 +105,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>("ALL");
   const [showEdgeLabels, setShowEdgeLabels] = useState<boolean>(true);
 
+  const availableTypes = useMemo(() => {
+    if (!data?.nodes) return ["Module", "File"];
+    const set = new Set<string>();
+    data.nodes.forEach((n) => {
+      if (n.type) set.add(n.type);
+    });
+    if (set.size === 0) return ["Module", "File"];
+    return Array.from(set).sort();
+  }, [data]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -804,8 +814,11 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               }}
             >
               <option value="ALL">All Types</option>
-              <option value="Module">Modules</option>
-              <option value="File">Files</option>
+              {availableTypes.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -970,6 +983,58 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           </div>
         </div>
       )}
+
+      {/* ── Persistent Visual Node-Type Legend ── */}
+      <div
+        data-testid="graph-node-legend"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.85rem",
+          padding: "0.35rem 1rem",
+          backgroundColor: "var(--bg-muted)",
+          borderBottom: "1px solid var(--border-subtle)",
+          fontSize: "0.72rem",
+          color: "var(--text-secondary)",
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <Layers size={12} /> Legend:
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#2563eb", display: "inline-block" }} />
+          Account
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#7c3aed", display: "inline-block" }} />
+          Transaction
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#0d9488", display: "inline-block" }} />
+          Device
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#d97706", display: "inline-block" }} />
+          IP Address
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#16a34a", display: "inline-block" }} />
+          Merchant
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#6366f1", display: "inline-block" }} />
+          Module
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#64748b", display: "inline-block" }} />
+          File
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: "#ef4444", display: "inline-block" }} />
+          Vulnerability
+        </span>
+      </div>
 
       {/* ── Main Canvas Viewport ── */}
       <div
@@ -1257,12 +1322,49 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               const isHovered = hoveredNodeId === node.id;
 
               const radius = isTarget ? NODE_RADIUS_TARGET : NODE_RADIUS_DEFAULT;
-              const nodeType = (node.type || "Module").toLowerCase();
+              const typeLower = (node.type || "Module").toLowerCase();
+              const nodeType = typeLower;
 
               let fill = "var(--bg-card)";
               let stroke = "var(--border-strong)";
               let strokeWidth = 1.8;
 
+              // Entity semantic color palette
+              if (typeLower === "account") {
+                fill = "rgba(37, 99, 235, 0.12)";
+                stroke = "#2563eb"; // Blue
+                strokeWidth = 2.2;
+              } else if (typeLower === "transaction") {
+                fill = "rgba(124, 58, 237, 0.12)";
+                stroke = "#7c3aed"; // Violet
+                strokeWidth = 2.0;
+              } else if (typeLower === "device") {
+                fill = "rgba(13, 148, 136, 0.12)";
+                stroke = "#0d9488"; // Teal
+                strokeWidth = 2.0;
+              } else if (typeLower === "ipaddress" || typeLower === "ip_address") {
+                fill = "rgba(217, 119, 6, 0.12)";
+                stroke = "#d97706"; // Amber
+                strokeWidth = 2.0;
+              } else if (typeLower === "merchant") {
+                fill = "rgba(22, 163, 74, 0.12)";
+                stroke = "#16a34a"; // Green
+                strokeWidth = 2.0;
+              } else if (typeLower === "vulnerability") {
+                fill = "rgba(239, 68, 68, 0.12)";
+                stroke = "#ef4444"; // Red
+                strokeWidth = 2.0;
+              } else if (typeLower === "file") {
+                fill = "rgba(100, 116, 139, 0.12)";
+                stroke = "#64748b"; // Slate
+                strokeWidth = 2.0;
+              } else if (typeLower === "module") {
+                fill = "rgba(99, 102, 241, 0.10)";
+                stroke = "#6366f1"; // Indigo
+                strokeWidth = 2.0;
+              }
+
+              // Overrides for focus, path traversal, diffing, and selection
               if (isTarget) {
                 fill = "var(--accent-blue)";
                 stroke = "var(--accent-blue-hover)";
@@ -1281,11 +1383,11 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                 strokeWidth = 2.2;
               } else if (isSelected || isHovered) {
                 stroke = "var(--accent-blue)";
-                strokeWidth = 2.6;
-              } else if (node.role === "dependent") {
+                strokeWidth = 2.8;
+              } else if (node.role === "dependent" && typeLower === "module") {
                 stroke = "#6366f1"; // Indigo for callers
                 strokeWidth = 2;
-              } else if (node.role === "dependency") {
+              } else if (node.role === "dependency" && typeLower === "module") {
                 stroke = "#0284c7"; // Sky for callees
                 strokeWidth = 2;
               }

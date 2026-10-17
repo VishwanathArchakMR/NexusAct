@@ -10,16 +10,17 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-146%2F146%20passing-brightgreen)](./tests)
-[![Vitest](https://img.shields.io/badge/vitest-20%2F20%20passing-brightgreen)](./frontend/tests)
+[![Tests](https://img.shields.io/badge/pytest-151%2F151%20passing-brightgreen)](./tests)
+[![Vitest](https://img.shields.io/badge/vitest-23%2F23%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
 > **Hackathon Submission Checklist:** [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md)  
-> **Phase 20 Acceptance Matrix:** [`docs/PHASE20_ACCEPTANCE.md`](docs/PHASE20_ACCEPTANCE.md)  
+> **Phase 21 Acceptance Matrix:** [`docs/PHASE21_ACCEPTANCE.md`](docs/PHASE21_ACCEPTANCE.md)  
+> **Phase 21 Final Report:** [`docs/PHASE21_FINAL_REPORT.md`](docs/PHASE21_FINAL_REPORT.md)  
+> **Multi-Tenant Auth Blueprint:** [`docs/ACCOUNT_SIGNUP_RECOMMENDATION.md`](docs/ACCOUNT_SIGNUP_RECOMMENDATION.md)  
 > **Phase 20 Final Report:** [`docs/PHASE20_FINAL_REPORT.md`](docs/PHASE20_FINAL_REPORT.md)  
-> **Phase 19 Acceptance Matrix:** [`docs/PHASE19_ACCEPTANCE.md`](docs/PHASE19_ACCEPTANCE.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
 
 ---
@@ -28,14 +29,15 @@
 
 **NexusAct** is a graph-native AI engineering agent that investigates software repositories and connected data ecosystems as interactive, auditable knowledge graphs.
 
-Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across four first-class input modes:
+Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across five first-class input modes:
 1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, interactive dual-mode SVG graph explorer (Investigation Path & Network Overview), and cryptographically verified GitHub action proposals.
 2. **Universal Public-Data Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
 3. **Public Vulnerability Security Triage (OSV):** Dynamic dependency analysis against OSV (Open Source Vulnerabilities) public database. Maps declared manifests (`package.json`, `package-lock.json`, `requirements.txt`) to `PackageDependency` and `Vulnerability` nodes in FalkorDB, tracing paths to consuming internal modules.
-4. **Bounded Synthetic Fraud Investigation:** Multi-hop graph traversal over isolated `nexusact_fraud_demo` graph detecting rapid circular transfer rings (`acc:101 -> acc:102 -> acc:103 -> acc:101`), shared device infrastructure (`dev:iphone_xyz`), and verified benign control baselines.
-5. **Google Gemini LLM Planning Adapter:** Server-side function-calling and structured tool budget execution using official `google-genai` SDK (`gemini-2.5-flash`). Enforces tool allowlist and deterministic fallback.
-6. **Safe Internal Action Persistence:** Safe `SAVED` state in FalkorDB when GitHub credentials are unset, preventing unauthenticated remote execution.
-7. **Judge-Ready Project Explorer & Live Diagnostics:** Collapsible 3-column repository explorer with bounded file tree, AST symbol navigation, and direct FalkorDB graph relationship linkage; real-time operational diagnostics replacing legacy roadmap cards; dual-mode graph explorer (Path View vs Network Overview) with bidirectional graph/source synchronization; and an accessible, high-contrast light/dark design system (#0B1F3A primary navy).
+4. **Real-Data Financial Fraud Investigation Engine (Phase 21):** Production-grade transaction network investigation powered by user-uploaded CSV/TSV/JSON records or 1-click AML benchmarks. Implements isolated FalkorDB graph namespaces (`fin_<dataset_id>`), direct OpenCypher reasoning for multi-hop circular loops (3–5 hops), shared hardware device/IP infrastructure matching, shortest-path tracing, and transparent mathematical risk scoring with strict read-only compliance guarantees.
+5. **Visual Semantics & Workspace Isolation:** Semantic node palettes (Account `#2563eb`, Transaction `#7c3aed`, Device `#0d9488`, IP `#d97706`, Merchant `#16a34a`, Module `#6366f1`) with persistent legends and dynamic type filtering; workspace context isolation ensuring codebase Git commits and file trees never leak into financial investigations.
+6. **Google Gemini LLM Planning Adapter:** Server-side function-calling and structured tool budget execution using official `google-genai` SDK (`gemini-2.5-flash`). Enforces tool allowlist and deterministic fallback.
+7. **Safe Internal Action Persistence:** Safe `SAVED` state in FalkorDB when GitHub credentials are unset, preventing unauthenticated remote execution.
+8. **Judge-Ready Project Explorer & Live Diagnostics:** Collapsible 3-column repository explorer with bounded file tree, AST symbol navigation, and direct FalkorDB graph relationship linkage; real-time operational diagnostics; dual-mode graph explorer with bidirectional graph/source synchronization; and an accessible, high-contrast light/dark design system (#0B1F3A primary navy).
 8. **Real Graph-Grounded Investigation Engine (Phase 19):** Dynamic, question-aware planning loop without hardcoded sequences; flow and reachability analysis across Codebase Walkthrough, OSV Security Triage, and isolated Financial Fraud topology; seamless Code Inspector cross-navigation; transparent FalkorDB Cypher risk indicator calculations; and resilient loop detection.
 9. **Final Judge-Ready Experience & Evidence Grounding (Phase 20):** Persistent vertical navigation across Explore, Analyze, Evidence & Action, and Specialized Workflows; grounded panel explanations across all 10 panels with SHA-256 LRU caching; truthful Gemini and fallback disclosure (`GEMINI_ACTIVE`, `FALLBACK_ACTIVE`); and verified genuine multi-hop reasoning over live FalkorDB graph data.
 

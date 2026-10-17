@@ -39,7 +39,7 @@ from backend.app.graph.tools.security_triage import SecurityTriageOutput
 from backend.app.graph.tools.shortest_path import ShortestPathOutput
 from backend.app.graph.tools.simulation import SimulationResult
 from backend.app.sources.freshness import source_freshness_service
-from backend.app.sources.models import SourceMetadataOutput, SourceSnapshot
+from backend.app.sources.models import SourceMetadataOutput, SourceSnapshot, SourceType
 from backend.app.sources.registry import repo_registry
 from mcp_server.server import create_mcp_server
 
@@ -171,12 +171,42 @@ class AdaptiveInvestigationAgent:
         else:
             mode = "codebase_walkthrough"
 
-        if mode == "fraud_demo":
+        if mode == "fraud_investigation":
+            from backend.app.finance.dataset_registry import dataset_registry
+
+            active_ds = dataset_registry.get_active_dataset()
+            if active_ds:
+                target_graph = active_ds.graph_name
+                resolved_repo_id = active_ds.dataset_id
+                commit_sha = active_ds.source_hash[:16]
+                source_snapshot = SourceSnapshot(
+                    snapshot_id=f"snap_{active_ds.dataset_id}",
+                    repository_id=active_ds.dataset_id,
+                    source_type=SourceType.LOCAL,
+                    canonical_source=active_ds.name,
+                    commit_sha=active_ds.source_hash[:16],
+                    graph_name=active_ds.graph_name,
+                    freshness_status="FRESH",
+                )
+                snapshot_id = f"snap_{active_ds.dataset_id}"
+            else:
+                target_graph = "nexusact_fraud_demo"
+                resolved_repo_id = "synthetic_fraud_demo"
+                commit_sha = "SYNTHETIC_DATA_V1"
+                source_snapshot = SourceSnapshot(
+                    snapshot_id="snap_fraud_demo",
+                    repository_id="synthetic_fraud_demo",
+                    source_type=SourceType.LOCAL,
+                    canonical_source="nexusact_fraud_demo",
+                    commit_sha="SYNTHETIC",
+                    graph_name="nexusact_fraud_demo",
+                    freshness_status="FRESH",
+                )
+                snapshot_id = "snap_fraud_demo"
+        elif mode == "fraud_demo":
             target_graph = "nexusact_fraud_demo"
             resolved_repo_id = "synthetic_fraud_demo"
             commit_sha = "SYNTHETIC_DATA_V1"
-            from backend.app.sources.models import SourceType
-
             source_snapshot = SourceSnapshot(
                 snapshot_id="snap_fraud_demo",
                 repository_id="synthetic_fraud_demo",
@@ -314,9 +344,9 @@ class AdaptiveInvestigationAgent:
         else:
             q_lower = question.lower()
             is_path_query = any(w in q_lower for w in ["path", "trace", "flow", "connect", "between", "how does"])
-            if mode in ("security_triage", "fraud_demo"):
+            if mode in ("security_triage", "fraud_demo", "fraud_investigation"):
                 resolved_id = None
-                target_name = "Repository-wide"
+                target_name = "Dataset-wide" if "fraud" in mode else "Repository-wide"
             elif is_path_query and (
                 "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower)
             ):

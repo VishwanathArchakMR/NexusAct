@@ -490,3 +490,150 @@ export interface PanelExplanationResponse {
   cache_key: string;
   model_name?: string | null;
 }
+
+export interface FinancialDatasetMetadata {
+  dataset_id: string;
+  dataset_name: string;
+  graph_name: string;
+  source_type: "csv_upload" | "json_upload" | "sample_benchmark" | "api_authorized";
+  source_version?: string;
+  record_count: number;
+  account_count: number;
+  transaction_count: number;
+  imported_at: string;
+  is_anonymized: boolean;
+  has_ground_truth_labels: boolean;
+  provenance_note: string;
+  data_limitations: string[];
+}
+
+export interface ColumnMapping {
+  tx_id: string;
+  src_account: string;
+  dst_account: string;
+  amount: string;
+  timestamp?: string | null;
+  currency?: string | null;
+  device_id?: string | null;
+  ip_address?: string | null;
+  merchant_id?: string | null;
+  fraud_label?: string | null;
+}
+
+export interface DatasetPreviewResponse {
+  detected_columns: string[];
+  suggested_mapping: ColumnMapping;
+  sample_rows: Record<string, unknown>[];
+  total_previewed_rows: number;
+  source_type: string;
+}
+
+export interface RiskFactorContribution {
+  factor_name: string;
+  weight: number;
+  contribution: number;
+  formula_explanation: string;
+  supporting_evidence: string;
+}
+
+export interface CycleFinding {
+  cycle_id: string;
+  length_hops: number;
+  cycle_path: string[];
+  participating_accounts: string[];
+  total_volume_usd: number;
+  retention_rate_pct?: number | null;
+  earliest_tx?: string | null;
+  latest_tx?: string | null;
+  supporting_query: string;
+  evidence_records: string[];
+}
+
+export interface SharedEntityFinding {
+  entity_type: "Device" | "IPAddress" | "Merchant";
+  entity_id: string;
+  entity_label: string;
+  associated_accounts: string[];
+  transaction_count: number;
+  supporting_query: string;
+  evidence_records: string[];
+}
+
+export interface VelocityFinding {
+  account_id: string;
+  tx_count: number;
+  total_volume_usd: number;
+  time_window_hours: number;
+  velocity_rate_tx_per_hr: number;
+  supporting_query: string;
+  evidence_records: string[];
+}
+
+export interface PathFinding {
+  src_account: string;
+  dst_account: string;
+  hops: number;
+  path_nodes: string[];
+  path_edges: string[];
+  total_transferred_usd: number;
+  supporting_query: string;
+}
+
+export interface GroundTruthComparison {
+  total_labeled: number;
+  true_positives: number;
+  false_positives: number;
+  false_negatives: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  evaluation_notes: string;
+}
+
+export interface BenignControlSummary {
+  benign_account_id: string;
+  in_degree: number;
+  out_degree: number;
+  total_volume_usd: number;
+  is_in_cycle: boolean;
+  shares_infrastructure: boolean;
+  classification_rationale: string;
+}
+
+export interface FraudFinding {
+  finding_id: string;
+  category: "CIRCULAR_ROUTING" | "SHARED_INFRASTRUCTURE" | "VELOCITY_BURST" | "MULTI_HOP_EXFILTRATION";
+  title: string;
+  plain_explanation: string;
+  trigger_rule: string;
+  dataset_id: string;
+  affected_accounts: string[];
+  affected_transactions: string[];
+  graph_path?: string[];
+  shared_entity_id?: string;
+  supporting_cypher: string;
+  observed_time_range?: string;
+  amounts_involved_usd: number;
+  limitations_and_caveats: string[];
+  confidence_score: number;
+  scoring_factors: RiskFactorContribution[];
+  recommended_analyst_action: string;
+  evidence_records: string[];
+}
+
+export interface FinancialInvestigationResult {
+  investigation_id: string;
+  dataset_metadata: FinancialDatasetMetadata;
+  analysis_timestamp: string;
+  cycles: CycleFinding[];
+  shared_entities: SharedEntityFinding[];
+  velocity_anomalies: VelocityFinding[];
+  findings: FraudFinding[];
+  ground_truth_comparison?: GroundTruthComparison | null;
+  benign_controls: BenignControlSummary[];
+  risk_score: number;
+  risk_factors: RiskFactorContribution[];
+  summary: string;
+  limitations: string[];
+  cypher_queries_executed: string[];
+}
