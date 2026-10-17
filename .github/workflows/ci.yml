@@ -91,7 +91,14 @@ jobs:
           FALKORDB_PORT: "6379"
           FALKORDB_PRIMARY_GRAPH: "nexusact_main"
           APP_ENV: "testing"
-        run: pytest -v
+        run: |
+          pytest -v || {
+            echo "### Pytest Failure Report" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            pytest --last-failed -v --tb=short >> $GITHUB_STEP_SUMMARY 2>&1 || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
   frontend-quality-gate:
     name: Frontend Lint, Tests & Build
