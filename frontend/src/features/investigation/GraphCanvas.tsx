@@ -90,6 +90,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [hopDepth, setHopDepth] = useState<1 | 2 | 3>(2);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>("ALL");
+  const [showEdgeLabels, setShowEdgeLabels] = useState<boolean>(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -304,32 +305,72 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
     const positions = new Map<string, { x: number; y: number }>();
 
-    for (const laneNum of sortedLanes) {
-      const laneNodes = byLane.get(laneNum) || [];
-      const laneX = centerX + laneNum * LANE_WIDTH;
+    // Dedicated Left-to-Right directional layout for Investigation Path mode
+    if (graphViewMode === "path" && highlightPathNodes.length >= 2) {
+      const pathIndices = new Map<string, number>();
+      highlightPathNodes.forEach((id, idx) => pathIndices.set(id, idx));
 
-      // If lane has more than MAX_NODES_PER_LANE, stagger into 2 sub-columns
-      const isStaggered = laneNodes.length > MAX_NODES_PER_LANE;
-      const count = laneNodes.length;
+      const pathCount = highlightPathNodes.length;
+      const stepSpacing = Math.max(180, Math.min(260, (canvasWidth - 220) / (pathCount - 1)));
+      const startX = centerX - ((pathCount - 1) * stepSpacing) / 2;
 
-      laneNodes.forEach((node, idx) => {
-        let x = laneX;
-        let y = centerY;
-
-        if (isStaggered) {
-          const colOffset = idx % 2 === 0 ? -45 : 45;
-          const rowIdx = Math.floor(idx / 2);
-          const totalRows = Math.ceil(count / 2);
-          const totalH = (totalRows - 1) * vSpacing;
-          x = laneX + colOffset;
-          y = centerY - totalH / 2 + rowIdx * vSpacing;
-        } else {
-          const totalH = (count - 1) * vSpacing;
-          y = centerY - totalH / 2 + idx * vSpacing;
-        }
-
-        positions.set(node.id, { x, y });
+      // Position verified path nodes in a straight horizontal line
+      highlightPathNodes.forEach((nodeId, idx) => {
+        positions.set(nodeId, {
+          x: startX + idx * stepSpacing,
+          y: centerY,
+        });
       });
+
+      // Position non-path neighbors above or below connected path nodes
+      const nonPathNodes = visibleNodesList.filter((n) => !pathIndices.has(n.id));
+      nonPathNodes.forEach((node, idx) => {
+        let connectedPathIdx = -1;
+        for (const e of validEdges) {
+          if (e.source === node.id && pathIndices.has(e.target)) {
+            connectedPathIdx = pathIndices.get(e.target)!;
+            break;
+          } else if (e.target === node.id && pathIndices.has(e.source)) {
+            connectedPathIdx = pathIndices.get(e.source)!;
+            break;
+          }
+        }
+        const baseX = connectedPathIdx >= 0 ? startX + connectedPathIdx * stepSpacing : centerX;
+        const side = idx % 2 === 0 ? -1 : 1;
+        const layer = Math.floor(idx / 2) + 1;
+        positions.set(node.id, {
+          x: baseX + (idx % 2 === 0 ? -35 : 35),
+          y: centerY + side * Math.min(180, layer * 75),
+        });
+      });
+    } else {
+      for (const laneNum of sortedLanes) {
+        const laneNodes = byLane.get(laneNum) || [];
+        const laneX = centerX + laneNum * LANE_WIDTH;
+
+        // If lane has more than MAX_NODES_PER_LANE, stagger into 2 sub-columns
+        const isStaggered = laneNodes.length > MAX_NODES_PER_LANE;
+        const count = laneNodes.length;
+
+        laneNodes.forEach((node, idx) => {
+          let x = laneX;
+          let y = centerY;
+
+          if (isStaggered) {
+            const colOffset = idx % 2 === 0 ? -45 : 45;
+            const rowIdx = Math.floor(idx / 2);
+            const totalRows = Math.ceil(count / 2);
+            const totalH = (totalRows - 1) * vSpacing;
+            x = laneX + colOffset;
+            y = centerY - totalH / 2 + rowIdx * vSpacing;
+          } else {
+            const totalH = (count - 1) * vSpacing;
+            y = centerY - totalH / 2 + idx * vSpacing;
+          }
+
+          positions.set(node.id, { x, y });
+        });
+      }
     }
 
     const visibleNodeIds = new Set(visibleNodesList.map((n) => n.id));
@@ -365,6 +406,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     selectedTypeFilter,
     searchQuery,
     highlightPathNodes,
+    graphViewMode,
   ]);
 
   // Viewport interactions: mouse dragging
@@ -629,6 +671,25 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               <option value="File">Files</option>
             </select>
           </div>
+
+          {/* Edge Labels Toggle */}
+          <button
+            onClick={() => setShowEdgeLabels((prev) => !prev)}
+            title="Toggle relationship labels along edges"
+            style={{
+              padding: "0.2rem 0.5rem",
+              borderRadius: "4px",
+              fontSize: "0.72rem",
+              fontWeight: 600,
+              border: "1px solid",
+              borderColor: showEdgeLabels ? "var(--accent-blue)" : "var(--border-subtle)",
+              backgroundColor: showEdgeLabels ? "var(--accent-blue-subtle)" : "var(--bg-primary)",
+              color: showEdgeLabels ? "var(--accent-blue)" : "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            Labels: {showEdgeLabels ? "ON" : "OFF"}
+          </button>
         </div>
 
         {/* Right: Metrics & Viewport Controls */}
@@ -950,6 +1011,13 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                 strokeWidth = 2.2;
                 marker = "url(#arrow-surviving)";
                 opacity = 0.95;
+              } else {
+                // Apply provenance stroke styling: derived = dashed, inferred = dotted, observed = solid
+                if (edge.provenance === "derived" || edge.evidence_type?.includes("derived")) {
+                  dashed = "6,4";
+                } else if (edge.provenance === "inferred" || edge.evidence_type?.includes("inferred")) {
+                  dashed = "2,3";
+                }
               }
 
               // Offset endpoints to sit on node border
@@ -959,10 +1027,13 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               const dy = dst.y - src.y;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-              const x1 = src.x + (dx / dist) * (srcRadius + 2);
-              const y1 = src.y + (dy / dist) * (srcRadius + 2);
-              const x2 = dst.x - (dx / dist) * (dstRadius + 4);
-              const y2 = dst.y - (dy / dist) * (dstRadius + 4);
+              const x1 = src.x + (dx / dist) * (srcRadius + 4);
+              const y1 = src.y + (dy / dist) * (srcRadius + 4);
+              const x2 = dst.x - (dx / dist) * (dstRadius + 6);
+              const y2 = dst.y - (dy / dist) * (dstRadius + 6);
+
+              const edgeLabel = edge.label || "DEPENDS_ON";
+              const labelBoxWidth = Math.min(110, edgeLabel.length * 5.4 + 12);
 
               return (
                 <g key={`edge-${edge.source}->${edge.target}-${edge.id}`}>
@@ -973,7 +1044,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                     x2={x2}
                     y2={y2}
                     stroke="transparent"
-                    strokeWidth={14}
+                    strokeWidth={16}
                     style={{ cursor: "pointer" }}
                     onClick={() => {
                       setSelectedEdge(edge);
@@ -995,6 +1066,31 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                     opacity={opacity}
                     style={{ pointerEvents: "none", transition: "stroke 0.15s ease" }}
                   />
+                  {/* Midpoint relationship label badge */}
+                  {(showEdgeLabels || graphViewMode === "path" || isSelected || isHovered) && (
+                    <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`} style={{ pointerEvents: "none" }}>
+                      <rect
+                        x={-labelBoxWidth / 2}
+                        y={-8}
+                        width={labelBoxWidth}
+                        height={16}
+                        rx={3}
+                        fill="var(--bg-card)"
+                        stroke={isPathEdge ? "#f59e0b" : isSelected || isHovered ? "var(--accent-blue)" : "var(--border-subtle)"}
+                        strokeWidth={1}
+                        opacity={0.94}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dy="3.5px"
+                        fontSize="7.5px"
+                        fontWeight={600}
+                        fill={isPathEdge ? "#d97706" : "var(--text-secondary)"}
+                      >
+                        {edgeLabel}
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -1009,6 +1105,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               const isHovered = hoveredNodeId === node.id;
 
               const radius = isTarget ? NODE_RADIUS_TARGET : NODE_RADIUS_DEFAULT;
+              const nodeType = (node.type || "Module").toLowerCase();
 
               let fill = "var(--bg-card)";
               let stroke = "var(--border-strong)";
@@ -1075,7 +1172,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                   {/* Path highlight ring */}
                   {isPath && !isTarget && (
                     <circle
-                      r={radius + 5}
+                      r={radius + 6}
                       fill="none"
                       stroke="#f59e0b"
                       strokeWidth={2}
@@ -1086,23 +1183,70 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                   {/* Selection indicator ring */}
                   {isSelected && (
                     <circle
-                      r={radius + 6}
+                      r={radius + 7}
                       fill="none"
                       stroke="var(--accent-blue)"
                       strokeWidth={2}
                     />
                   )}
 
-                  {/* Core Node Circle */}
-                  <circle
-                    r={radius}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={strokeWidth}
-                    style={{ transition: "all 0.15s ease" }}
-                  />
+                  {/* Distinct SVG Node Shape based on Schema Entity Type */}
+                  {nodeType === "file" ? (
+                    // File Card geometry with folded top-right corner
+                    <polygon
+                      points="-15,-18 7,-18 15,-10 15,18 -15,18"
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      style={{ transition: "all 0.15s ease" }}
+                    />
+                  ) : nodeType === "vulnerability" || nodeType === "securityfinding" ? (
+                    // Vulnerability Diamond geometry
+                    <polygon
+                      points="0,-18 18,0 0,18 -18,0"
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      style={{ transition: "all 0.15s ease" }}
+                    />
+                  ) : nodeType === "person" || nodeType === "contributor" ? (
+                    // Contributor / Reviewer Circle Avatar
+                    <circle
+                      r={radius}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      style={{ transition: "all 0.15s ease" }}
+                    />
+                  ) : nodeType === "account" || nodeType === "device" ? (
+                    // Fraud Demo Account/Device Pill
+                    <rect
+                      x={-22}
+                      y={-13}
+                      width={44}
+                      height={26}
+                      rx={9}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      style={{ transition: "all 0.15s ease" }}
+                    />
+                  ) : (
+                    // Canonical Module Rounded Chip
+                    <rect
+                      x={-radius * 1.25}
+                      y={-radius * 0.9}
+                      width={radius * 2.5}
+                      height={radius * 1.8}
+                      rx={6}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      style={{ transition: "all 0.15s ease" }}
+                    />
+                  )}
 
-                  {/* Target Icon or Initial */}
+                  {/* Icon or Type Initial */}
                   {isTarget ? (
                     <text
                       textAnchor="middle"
@@ -1112,6 +1256,26 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                       fill="#ffffff"
                     >
                       ★
+                    </text>
+                  ) : nodeType === "file" ? (
+                    <text
+                      textAnchor="middle"
+                      dy="4px"
+                      fontSize="9px"
+                      fontWeight={700}
+                      fill={isPath ? "#92400e" : "var(--text-secondary)"}
+                    >
+                      📄
+                    </text>
+                  ) : nodeType === "vulnerability" ? (
+                    <text
+                      textAnchor="middle"
+                      dy="3.5px"
+                      fontSize="9px"
+                      fontWeight={700}
+                      fill="#b91c1c"
+                    >
+                      ⚠
                     </text>
                   ) : (
                     <text
@@ -1127,7 +1291,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
                   {/* Label below node */}
                   <text
-                    dy={radius + 14}
+                    dy={radius + 15}
                     textAnchor="middle"
                     fontSize={isTarget ? "11px" : "10px"}
                     fontWeight={isTarget ? 700 : 500}
@@ -1147,7 +1311,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                   {/* Role sub-badge */}
                   {!isTarget && (
                     <text
-                      dy={radius + 25}
+                      dy={radius + 26}
                       textAnchor="middle"
                       fontSize="8px"
                       fontWeight={600}
@@ -1165,7 +1329,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                         ? "▼ Dep"
                         : isPath
                         ? "★ Path"
-                        : ""}
+                        : nodeType}
                     </text>
                   )}
                 </g>
@@ -1409,36 +1573,58 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
-          padding: "0.45rem 1rem",
+          padding: "0.5rem 1rem",
           backgroundColor: "var(--bg-secondary)",
           borderTop: "1px solid var(--border-subtle)",
           fontSize: "0.72rem",
           color: "var(--text-muted)",
-          gap: "0.5rem",
+          gap: "0.6rem",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.9rem", flexWrap: "wrap" }}>
+          {/* Node Geometries */}
           <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "var(--accent-blue)" }} />
-            Target Focus
+            <span style={{ width: 12, height: 9, borderRadius: 2, backgroundColor: "var(--accent-blue)" }} />
+            Module
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", border: "2px solid #6366f1", backgroundColor: "transparent" }} />
-            Upstream Caller (Left)
+            <span style={{ width: 10, height: 12, border: "1px solid var(--border-strong)", backgroundColor: "var(--bg-card)" }} />
+            File
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", border: "2px solid #0284c7", backgroundColor: "transparent" }} />
+            <span style={{ width: 8, height: 8, transform: "rotate(45deg)", border: "1.5px solid #ef4444", backgroundColor: "var(--status-contradicted-bg)" }} />
+            Vulnerability
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #6366f1", backgroundColor: "transparent" }} />
+            Caller (Left)
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #0284c7", backgroundColor: "transparent" }} />
             Dependency (Right)
+          </span>
+          {/* Edge Provenance Styles */}
+          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 14, height: 2, backgroundColor: "var(--border-strong)" }} />
+            Observed Edge
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 14, height: 2, borderBottom: "2px dashed var(--accent-blue)" }} />
+            Derived
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 14, height: 2, borderBottom: "2px dotted #f59e0b" }} />
+            Inferred
           </span>
           {highlightPathNodes.length > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#fef3c7", border: "2px solid #f59e0b" }} />
+              <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: "#fef3c7", border: "1.5px solid #f59e0b" }} />
               Active Path Hop
             </span>
           )}
           {disappearedEdgeIds.length > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              <span style={{ width: 12, height: 2, borderBottom: "2px dashed #ef4444" }} />
+              <span style={{ width: 14, height: 2, borderBottom: "2px dashed #ef4444" }} />
               Disrupted Scenario Edge
             </span>
           )}

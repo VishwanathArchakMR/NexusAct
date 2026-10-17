@@ -9,6 +9,7 @@ Supports:
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -226,7 +227,12 @@ class GeminiProvider(BaseLLMProvider):
     """Google Gemini Developer API provider for structured, bounded tool planning."""
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or settings.GEMINI_API_KEY
+        self.api_key = (
+            api_key
+            or settings.GEMINI_API_KEY
+            or os.environ.get("GEMINI_API_KEY", "")
+            or os.environ.get("GOOGLE_API_KEY", "")
+        )
         self.model = model or settings.GEMINI_MODEL or "gemini-2.5-flash"
         self._client: Any = None
         if self.api_key:
@@ -328,7 +334,10 @@ def get_llm_provider() -> BaseLLMProvider:
     """Returns the configured LLM provider according to environment settings."""
     provider_type = settings.LLM_PROVIDER.lower().strip()
 
-    if provider_type == "gemini":
+    if provider_type == "gemini" or (
+        provider_type in ("none", "")
+        and (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    ):
         gemini = GeminiProvider()
         if gemini.is_available:
             return gemini

@@ -362,4 +362,20 @@ export async function confirmInvestigationAction(
   return handleResponse(res, "Failed to confirm action");
 }
 
+export async function fetchPanelExplanation(
+  payload: import("../types/investigation").PanelExplanationRequest
+): Promise<import("../types/investigation").PanelExplanationResponse> {
+  const url = `${config.apiBaseUrl}/api/v1/investigation/explain-panel`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<import("../types/investigation").PanelExplanationResponse>(
+    res,
+    "Failed to generate panel explanation"
+  );
+}
+
+
 

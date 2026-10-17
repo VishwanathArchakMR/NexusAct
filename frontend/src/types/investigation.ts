@@ -414,6 +414,7 @@ export interface GraphEdge {
   target: string;
   label: string;
   evidence_type: string;
+  provenance?: string;
   properties?: Record<string, unknown>;
 }
 
@@ -456,4 +457,27 @@ export interface InvestigationRequest {
   repo_id?: string | null;
   graph_name?: string | null;
   max_budget?: number;
+}
+
+export interface PanelExplanationRequest {
+  investigation_id: string;
+  panel_id: string;
+  question: string;
+  target_id?: string | null;
+  repo_id?: string | null;
+  commit_sha?: string | null;
+  data_summary?: Record<string, unknown>;
+}
+
+export interface PanelExplanationResponse {
+  summary: string;
+  what_you_are_looking_at: string;
+  what_nexusact_found: string;
+  why_it_matters: string;
+  evidence_and_relationships: string[];
+  confidence_and_limitations: string;
+  recommended_next_step: string;
+  provider_status: "gemini" | "cached" | "fallback";
+  cache_key: string;
+  model_name?: string | null;
 }

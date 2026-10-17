@@ -26,6 +26,7 @@ import { ReviewerRankings } from "./ReviewerRankings";
 import { CounterfactualDiff } from "./CounterfactualDiff";
 import { IssueProposalCard } from "./IssueProposalCard";
 import { CodeInspector } from "./CodeInspector";
+import { PanelExplanation } from "./PanelExplanation";
 
 import {
   Sparkles,
@@ -48,6 +49,8 @@ import {
   DollarSign,
   CheckCircle2,
   FileCode,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export interface InvestigationWorkspaceProps {
@@ -109,6 +112,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
     | "action"
   >("graph");
   const [simulationView, setSimulationView] = useState<"baseline" | "scenario">("baseline");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   const [report, setReport] = useState<InvestigationReport | null>(null);
   const [subgraph, setSubgraph] = useState<SubgraphResponse | null>(null);
@@ -1344,469 +1348,792 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         </div>
       )}
 
-      {/* ── Workspace Navigation Tabs ── */}
+      {/* ── Investigation Workspace Main Area with Persistent Vertical Sidebar ── */}
       <div
         style={{
           display: "flex",
-          borderBottom: "1px solid var(--border-subtle)",
-          gap: "0.25rem",
-          overflowX: "auto",
+          gap: "1.25rem",
+          alignItems: "flex-start",
+          minHeight: "720px",
+          width: "100%",
         }}
       >
-        <button
-          onClick={() => setActiveTab("graph")}
+        {/* Persistent Vertical Left Sidebar */}
+        <aside
+          aria-label="Investigation Navigation"
           style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "graph" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "graph" ? "var(--accent-blue)" : "var(--text-secondary)",
+            width: isSidebarCollapsed ? "58px" : "240px",
+            flexShrink: 0,
+            backgroundColor: "var(--bg-card)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "10px",
+            boxShadow: "var(--shadow-sm)",
+            padding: isSidebarCollapsed ? "0.6rem 0.35rem" : "0.85rem 0.65rem",
             display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
+            flexDirection: "column",
+            gap: "0.85rem",
+            transition: "width 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            position: "sticky",
+            top: "1rem",
+            zIndex: 5,
           }}
         >
-          <Layers size={14} />
-          Graph Explorer
-        </button>
-
-        <button
-          onClick={() => setActiveTab("code")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "code" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "code" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <FileCode size={14} />
-          Code Inspector
-        </button>
-
-        {(investigationMode === "security_triage" || report?.security_triage_result) && (
-          <button
-            onClick={() => setActiveTab("security")}
+          {/* Header with Collapse Toggle */}
+          <div
             style={{
-              padding: "0.55rem 1rem",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              border: "none",
-              borderBottom: activeTab === "security" ? "2px solid #ef4444" : "2px solid transparent",
-              backgroundColor: "transparent",
-              color: activeTab === "security" ? "#ef4444" : "var(--text-secondary)",
               display: "flex",
               alignItems: "center",
-              gap: "0.4rem",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
+              justifyContent: isSidebarCollapsed ? "center" : "space-between",
+              paddingBottom: "0.5rem",
+              borderBottom: "1px solid var(--border-subtle)",
             }}
           >
-            <ShieldAlert size={14} />
-            Security Triage (OSV)
-          </button>
-        )}
+            {!isSidebarCollapsed && (
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 800,
+                  letterSpacing: "0.06em",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Investigation
+              </span>
+            )}
+            <button
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "5px",
+                padding: "0.25rem",
+                cursor: "pointer",
+                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+          </div>
 
-        {(investigationMode === "fraud_demo" || report?.fraud_result) && (
-          <button
-            onClick={() => setActiveTab("fraud")}
-            style={{
-              padding: "0.55rem 1rem",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              border: "none",
-              borderBottom: activeTab === "fraud" ? "2px solid #d97706" : "2px solid transparent",
-              backgroundColor: "transparent",
-              color: activeTab === "fraud" ? "#d97706" : "var(--text-secondary)",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <DollarSign size={14} />
-            Fraud Topology Demo
-          </button>
-        )}
+          {/* Group 1: Explore */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            {!isSidebarCollapsed && (
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0.2rem 0.5rem" }}>
+                Explore
+              </div>
+            )}
+            <button
+              role="tab"
+              aria-selected={activeTab === "graph"}
+              onClick={() => setActiveTab("graph")}
+              title={isSidebarCollapsed ? "Graph Explorer" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "graph" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "graph" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "graph" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "graph" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <Layers size={15} />
+                {!isSidebarCollapsed && <span>Graph Explorer</span>}
+              </div>
+              {!isSidebarCollapsed && subgraph && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: activeTab === "graph" ? "var(--accent-blue)" : "var(--bg-secondary)", color: activeTab === "graph" ? "#ffffff" : "var(--text-muted)" }}>
+                  {subgraph.nodes.length}
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "code"}
+              onClick={() => setActiveTab("code")}
+              title={isSidebarCollapsed ? "Code Inspector" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "code" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "code" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "code" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "code" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <FileCode size={15} />
+                {!isSidebarCollapsed && <span>Code Inspector</span>}
+              </div>
+              {!isSidebarCollapsed && selectedModule && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "var(--bg-secondary)", color: "var(--accent-blue)" }}>
+                  Active
+                </span>
+              )}
+            </button>
+          </div>
 
-        <button
-          onClick={() => setActiveTab("simulation")}
+          {/* Group 2: Analyze */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            {!isSidebarCollapsed && (
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0.2rem 0.5rem" }}>
+                Analyze
+              </div>
+            )}
+            <button
+              role="tab"
+              aria-selected={activeTab === "simulation"}
+              onClick={() => setActiveTab("simulation")}
+              title={isSidebarCollapsed ? "Scenario Simulation" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "simulation" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "simulation" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "simulation" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "simulation" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <GitFork size={15} />
+                {!isSidebarCollapsed && <span>Scenario Simulation</span>}
+              </div>
+              {!isSidebarCollapsed && sim && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: sim.disappeared_paths_count > 0 ? "#fee2e2" : "var(--bg-secondary)", color: sim.disappeared_paths_count > 0 ? "#b91c1c" : "var(--text-muted)" }}>
+                  {sim.disappeared_paths_count} cut
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "reviewers"}
+              onClick={() => setActiveTab("reviewers")}
+              title={isSidebarCollapsed ? "Reviewers & Authors" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "reviewers" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "reviewers" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "reviewers" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "reviewers" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <Users size={15} />
+                {!isSidebarCollapsed && <span>Reviewers & Authors</span>}
+              </div>
+              {!isSidebarCollapsed && report?.reviewer_result?.candidates && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)" }}>
+                  {report.reviewer_result.candidates.length}
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "trace"}
+              onClick={() => setActiveTab("trace")}
+              title={isSidebarCollapsed ? "Agent MCP Trace" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "trace" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "trace" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "trace" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "trace" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <GitBranch size={15} />
+                {!isSidebarCollapsed && <span>Agent MCP Trace</span>}
+              </div>
+              {!isSidebarCollapsed && report?.steps && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)" }}>
+                  {report.steps.length}
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "neighborhood"}
+              onClick={() => setActiveTab("neighborhood")}
+              title={isSidebarCollapsed ? "Neighborhood & Paths" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "neighborhood" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "neighborhood" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "neighborhood" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "neighborhood" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <Network size={15} />
+                {!isSidebarCollapsed && <span>Neighborhood & Paths</span>}
+              </div>
+              {!isSidebarCollapsed && activePathNodes.length >= 2 && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "#fef3c7", color: "#b45309" }}>
+                  {activePathNodes.length - 1} hops
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Group 3: Evidence & Action */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            {!isSidebarCollapsed && (
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0.2rem 0.5rem" }}>
+                Evidence & Action
+              </div>
+            )}
+            <button
+              role="tab"
+              aria-selected={activeTab === "provenance"}
+              onClick={() => setActiveTab("provenance")}
+              title={isSidebarCollapsed ? "Source Provenance" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "provenance" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "provenance" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "provenance" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "provenance" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <Compass size={15} />
+                {!isSidebarCollapsed && <span>Source Provenance</span>}
+              </div>
+              {!isSidebarCollapsed && snapshot?.commit_sha && (
+                <span style={{ fontSize: "0.68rem", fontFamily: "var(--font-mono)", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)" }}>
+                  {snapshot.commit_sha.slice(0, 7)}
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "action"}
+              onClick={() => setActiveTab("action")}
+              title={isSidebarCollapsed ? "Verified Action" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "action" ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                backgroundColor: activeTab === "action" ? "var(--accent-blue-subtle)" : "transparent",
+                color: activeTab === "action" ? "var(--accent-blue)" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "action" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <FileText size={15} />
+                {!isSidebarCollapsed && <span>Verified Action</span>}
+              </div>
+              {!isSidebarCollapsed && report?.action_proposal && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "var(--status-verified-bg)", color: "var(--status-verified-text)" }}>
+                  Ready
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Group 4: Specialized Workflows */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", borderTop: "1px solid var(--border-subtle)", paddingTop: "0.5rem" }}>
+            {!isSidebarCollapsed && (
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0.2rem 0.5rem" }}>
+                Specialized Workflows
+              </div>
+            )}
+            <button
+              role="tab"
+              aria-selected={activeTab === "security"}
+              onClick={() => setActiveTab("security")}
+              title={isSidebarCollapsed ? "Security Triage (OSV)" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "security" ? "3px solid #ef4444" : "3px solid transparent",
+                backgroundColor: activeTab === "security" ? "rgba(239, 68, 68, 0.08)" : "transparent",
+                color: activeTab === "security" ? "#ef4444" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "security" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <ShieldAlert size={15} color="#ef4444" />
+                {!isSidebarCollapsed && <span>Security Triage</span>}
+              </div>
+              {!isSidebarCollapsed && report?.security_triage_result && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: report.security_triage_result.total_vulnerabilities_count > 0 ? "#fee2e2" : "#dcfce7", color: report.security_triage_result.total_vulnerabilities_count > 0 ? "#b91c1c" : "#15803d" }}>
+                  {report.security_triage_result.total_vulnerabilities_count} OSV
+                </span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "fraud"}
+              onClick={() => setActiveTab("fraud")}
+              title={isSidebarCollapsed ? "Fraud Topology Demo" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "none",
+                borderLeft: activeTab === "fraud" ? "3px solid #d97706" : "3px solid transparent",
+                backgroundColor: activeTab === "fraud" ? "rgba(217, 119, 6, 0.08)" : "transparent",
+                color: activeTab === "fraud" ? "#d97706" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: activeTab === "fraud" ? 700 : 500,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <DollarSign size={15} color="#d97706" />
+                {!isSidebarCollapsed && <span>Fraud Topology</span>}
+              </div>
+              {!isSidebarCollapsed && report?.fraud_result && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", backgroundColor: "#fef3c7", color: "#b45309" }}>
+                  {report.fraud_result.patterns_detected.length} patterns
+                </span>
+              )}
+            </button>
+          </div>
+        </aside>
+
+        {/* ── Main Workspace Panels Area ── */}
+        <main
           style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "simulation" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "simulation" ? "var(--accent-blue)" : "var(--text-secondary)",
+            flex: 1,
+            minWidth: 0,
             display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
+            flexDirection: "column",
+            gap: "1rem",
           }}
         >
-          <GitFork size={14} />
-          Scenario Simulation
-        </button>
+          {/* 1. Graph Explorer (State Preserved: always in DOM) */}
+          <div style={{ display: activeTab === "graph" ? "flex" : "none", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+            <PanelExplanation
+              panelId="graph"
+              investigationId={report?.investigation_id || `inv:graph_${selectedRepoId}`}
+              question={question}
+              targetId={selectedModule}
+              repoId={selectedRepoId}
+              commitSha={snapshot?.commit_sha}
+              dataSummary={{
+                node_count: subgraph?.nodes.length || 0,
+                edge_count: subgraph?.edges.length || 0,
+                target_id: selectedModule,
+                path_hops: activePathNodes.length >= 2 ? activePathNodes.length - 1 : 0,
+              }}
+            />
+            <GraphCanvas
+              data={subgraph}
+              targetNodeId={selectedModule}
+              disappearedNodeIds={disappearedNodeIds}
+              disappearedEdgeIds={disappearedEdgeIds}
+              survivingNodeIds={survivingNodeIds}
+              highlightPathNodes={activePathNodes}
+              isLoading={isLoading}
+              onSelectTarget={(nodeId) => {
+                setSelectedModule(nodeId);
+                loadGraph(nodeId, selectedRepoId);
+              }}
+              onOpenSourceFile={() => {
+                setActiveTab("code");
+              }}
+            />
+          </div>
 
-        <button
-          onClick={() => setActiveTab("reviewers")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "reviewers" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "reviewers" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <Users size={14} />
-          Reviewers & Authors
-        </button>
-
-        <button
-          onClick={() => setActiveTab("trace")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "trace" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "trace" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <GitBranch size={14} />
-          Agent MCP Trace
-        </button>
-
-        <button
-          onClick={() => setActiveTab("neighborhood")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "neighborhood" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "neighborhood" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <Network size={14} />
-          Neighborhood & Paths
-        </button>
-
-        <button
-          onClick={() => setActiveTab("provenance")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "provenance" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "provenance" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <Compass size={14} />
-          Source Provenance
-        </button>
-
-        <button
-          onClick={() => setActiveTab("action")}
-          style={{
-            padding: "0.55rem 1rem",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "none",
-            borderBottom: activeTab === "action" ? "2px solid var(--accent-blue)" : "2px solid transparent",
-            backgroundColor: "transparent",
-            color: activeTab === "action" ? "var(--accent-blue)" : "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <FileText size={14} />
-          Verified Action
-        </button>
-      </div>
-
-      {/* ── Tab Panels (Lossless: GraphCanvas stays mounted) ── */}
-      <div style={{ display: activeTab === "graph" ? "block" : "none" }}>
-        <GraphCanvas
-          data={subgraph}
-          targetNodeId={selectedModule}
-          disappearedNodeIds={disappearedNodeIds}
-          disappearedEdgeIds={disappearedEdgeIds}
-          survivingNodeIds={survivingNodeIds}
-          highlightPathNodes={activePathNodes}
-          isLoading={isLoading}
-          onSelectTarget={(nodeId) => {
-            setSelectedModule(nodeId);
-            loadGraph(nodeId, selectedRepoId);
-          }}
-          onOpenSourceFile={() => {
-            setActiveTab("code");
-          }}
-        />
-
-      </div>
-
-      {activeTab === "code" && (
-        <CodeInspector
-          repoId={selectedRepoId}
-          commitSha={snapshot?.commit_sha}
-          activeTargetNodeId={selectedModule}
-          onNavigateToGraph={(moduleId) => {
-            setSelectedModule(moduleId);
-            loadGraph(moduleId, selectedRepoId);
-            setActiveTab("graph");
-          }}
-          onTriggerInvestigation={(q, targetId) => {
-            setQuestion(q);
-            if (targetId) setSelectedModule(targetId);
-            handleInvestigate(targetId);
-            setActiveTab("graph");
-          }}
-
-        />
-      )}
+          {/* 2. Code Inspector (State Preserved: always in DOM) */}
+          <div style={{ display: activeTab === "code" ? "flex" : "none", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+            <PanelExplanation
+              panelId="code"
+              investigationId={report?.investigation_id || `inv:code_${selectedRepoId}`}
+              question={question}
+              targetId={selectedModule}
+              repoId={selectedRepoId}
+              commitSha={snapshot?.commit_sha}
+              dataSummary={{
+                target_id: selectedModule,
+                repo_id: selectedRepoId,
+                commit_sha: snapshot?.commit_sha,
+              }}
+            />
+            <CodeInspector
+              repoId={selectedRepoId}
+              commitSha={snapshot?.commit_sha}
+              activeTargetNodeId={selectedModule}
+              onNavigateToGraph={(moduleId) => {
+                setSelectedModule(moduleId);
+                loadGraph(moduleId, selectedRepoId);
+                setActiveTab("graph");
+              }}
+              onTriggerInvestigation={(q, targetId) => {
+                setQuestion(q);
+                if (targetId) setSelectedModule(targetId);
+                handleInvestigate(targetId);
+                setActiveTab("graph");
+              }}
+            />
+          </div>
 
 
       {activeTab === "security" && (
-        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <div>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#ef4444", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <ShieldAlert size={18} />
-                Security Vulnerability Triage (OSV.dev Grounded)
-              </h3>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
-                Scanned declared dependency manifests in <strong>{selectedRepoId}</strong> against public OSV advisories.
-              </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="security"
+            investigationId={report?.investigation_id || `inv:security_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              total_vulnerabilities: report?.security_triage_result?.total_vulnerabilities_count || 0,
+              dependencies_analyzed: report?.security_triage_result?.dependencies_analyzed_count || 0,
+              critical_count: report?.security_triage_result?.critical_count || 0,
+            }}
+          />
+          <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#ef4444", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <ShieldAlert size={18} />
+                  Security Vulnerability Triage (OSV.dev Grounded)
+                </h3>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                  Scanned declared dependency manifests in <strong>{selectedRepoId}</strong> against public OSV advisories.
+                </p>
+              </div>
+              {report?.security_triage_result && (
+                <span
+                  style={{
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    padding: "0.2rem 0.6rem",
+                    borderRadius: "20px",
+                    backgroundColor: report.security_triage_result.total_vulnerabilities_count === 0 ? "#dcfce7" : "#fee2e2",
+                    color: report.security_triage_result.total_vulnerabilities_count === 0 ? "#15803d" : "#b91c1c",
+                  }}
+                >
+                  {report.security_triage_result.total_vulnerabilities_count} Advisories Found ({report.security_triage_result.dependencies_analyzed_count} Dependencies Analyzed)
+                </span>
+              )}
             </div>
-            {report?.security_triage_result && (
-              <span
-                style={{
-                  fontSize: "0.74rem",
-                  fontWeight: 700,
-                  padding: "0.2rem 0.6rem",
-                  borderRadius: "20px",
-                  backgroundColor: report.security_triage_result.total_vulnerabilities_count === 0 ? "#dcfce7" : "#fee2e2",
-                  color: report.security_triage_result.total_vulnerabilities_count === 0 ? "#15803d" : "#b91c1c",
-                }}
-              >
-                {report.security_triage_result.total_vulnerabilities_count} Advisories Found ({report.security_triage_result.dependencies_analyzed_count} Dependencies Analyzed)
-              </span>
+
+            {report?.security_triage_result?.remediation_proposal && (
+              <div style={{ padding: "0.85rem", borderRadius: "6px", backgroundColor: "#f8fafc", border: "1px solid var(--border-subtle)", marginBottom: "1rem", fontSize: "0.82rem" }}>
+                <strong style={{ color: "var(--text-primary)" }}>Remediation Plan:</strong>
+                <p style={{ margin: "0.3rem 0 0 0", color: "var(--text-secondary)" }}>
+                  {report.security_triage_result.remediation_proposal}
+                </p>
+              </div>
             )}
-          </div>
 
-          {report?.security_triage_result?.remediation_proposal && (
-            <div style={{ padding: "0.85rem", borderRadius: "6px", backgroundColor: "#f8fafc", border: "1px solid var(--border-subtle)", marginBottom: "1rem", fontSize: "0.82rem" }}>
-              <strong style={{ color: "var(--text-primary)" }}>Remediation Plan:</strong>
-              <p style={{ margin: "0.3rem 0 0 0", color: "var(--text-secondary)" }}>
-                {report.security_triage_result.remediation_proposal}
-              </p>
-            </div>
-          )}
-
-          {report?.security_triage_result?.vulnerabilities_found && report.security_triage_result.vulnerabilities_found.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {report.security_triage_result.vulnerabilities_found.map((vuln, idx) => (
-                <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{vuln.vuln_id}</strong>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.severity === "CRITICAL" ? "#fee2e2" : "#fef3c7", color: vuln.severity === "CRITICAL" ? "#b91c1c" : "#b45309" }}>
-                        {vuln.severity}
-                      </span>
-                      <span style={{ fontSize: "0.74rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
-                        {vuln.package_name}@{vuln.package_version}
-                      </span>
+            {report?.security_triage_result?.vulnerabilities_found && report.security_triage_result.vulnerabilities_found.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {report.security_triage_result.vulnerabilities_found.map((vuln, idx) => (
+                  <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{vuln.vuln_id}</strong>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.severity === "CRITICAL" ? "#fee2e2" : "#fef3c7", color: vuln.severity === "CRITICAL" ? "#b91c1c" : "#b45309" }}>
+                          {vuln.severity}
+                        </span>
+                        <span style={{ fontSize: "0.74rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                          {vuln.package_name}@{vuln.package_version}
+                        </span>
+                      </div>
+                      {vuln.reachability_status && (
+                        <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#fee2e2" : "#f1f5f9", color: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#b91c1c" : "#475569", fontWeight: 600 }}>
+                          {vuln.reachability_status}
+                        </span>
+                      )}
                     </div>
-                    {vuln.reachability_status && (
-                      <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#fee2e2" : "#f1f5f9", color: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#b91c1c" : "#475569", fontWeight: 600 }}>
-                        {vuln.reachability_status}
-                      </span>
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{vuln.summary}</p>
+                    {vuln.fixed_version && (
+                      <div style={{ fontSize: "0.74rem", color: "#15803d", fontWeight: 600 }}>
+                        Recommended Fix: Upgrade to <code>{vuln.fixed_version}</code>
+                      </div>
                     )}
                   </div>
-                  <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{vuln.summary}</p>
-                  {vuln.fixed_version && (
-                    <div style={{ fontSize: "0.74rem", color: "#15803d", fontWeight: 600 }}>
-                      Recommended Fix: Upgrade to <code>{vuln.fixed_version}</code>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)" }}>
-              <CheckCircle2 size={32} color="#10b981" style={{ marginBottom: "0.5rem" }} />
-              <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>
-                No Known Public Vulnerabilities Detected
+                ))}
               </div>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                All scanned dependencies in this repository snapshot match current non-vulnerable OSV records.
-              </p>
-            </div>
-          )}
+            ) : (
+              <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)" }}>
+                <CheckCircle2 size={32} color="#10b981" style={{ marginBottom: "0.5rem" }} />
+                <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>
+                  No Known Public Vulnerabilities Detected
+                </div>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                  All scanned dependencies in this repository snapshot match current non-vulnerable OSV records.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {activeTab === "fraud" && (
-        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <div>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#d97706", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <DollarSign size={18} />
-                Synthetic Financial Graph Fraud Topology (nexusact_fraud_demo)
-              </h3>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
-                Multi-hop circular transfer cycles, shared device hardware fingerprints, and verified benign controls in FalkorDB.
-              </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="fraud"
+            investigationId={report?.investigation_id || "inv:fraud_demo"}
+            question={question}
+            targetId={selectedModule}
+            repoId="nexusact_fraud_demo"
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              patterns_detected_count: report?.fraud_result?.patterns_detected?.length || 0,
+              total_suspicious_volume_usd: report?.fraud_result?.total_suspicious_volume_usd || 0,
+              benign_controls_count: report?.fraud_result?.benign_controls?.length || 0,
+              risk_indicator: report?.fraud_result?.risk_indicator || "UNKNOWN",
+            }}
+          />
+          <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#d97706", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <DollarSign size={18} />
+                  Synthetic Financial Graph Fraud Topology (nexusact_fraud_demo)
+                </h3>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                  Multi-hop circular transfer cycles, shared device hardware fingerprints, and verified benign controls in FalkorDB.
+                </p>
+              </div>
+              {report?.fraud_result && (
+                <span
+                  style={{
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    padding: "0.2rem 0.6rem",
+                    borderRadius: "20px",
+                    backgroundColor: "#fee2e2",
+                    color: "#b91c1c",
+                  }}
+                >
+                  Risk: {report.fraud_result.risk_indicator}
+                </span>
+              )}
             </div>
-            {report?.fraud_result && (
-              <span
-                style={{
-                  fontSize: "0.74rem",
-                  fontWeight: 700,
-                  padding: "0.2rem 0.6rem",
-                  borderRadius: "20px",
-                  backgroundColor: "#fee2e2",
-                  color: "#b91c1c",
-                }}
-              >
-                Risk: {report.fraud_result.risk_indicator}
-              </span>
-            )}
-          </div>
 
-          {/* Synthetic Disclaimer Banner */}
-          <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.78rem", marginBottom: "1rem" }}>
-            <strong>Synthetic Demonstration Notice:</strong> This workflow operates exclusively on deterministic synthetic records in FalkorDB graph <code>nexusact_fraud_demo</code>. No real individuals, accounts, or banks are represented.
-          </div>
-
-          {report?.fraud_result?.patterns_detected && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
-              <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-                Detected Suspicious Topology Patterns ({report.fraud_result.patterns_detected.length})
-              </h4>
-              {report.fraud_result.patterns_detected.map((pat, idx) => (
-                <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type}</strong>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
-                        Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
-                      </span>
-                    </div>
-                    {pat.amount_involved && (
-                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                        Flow: ${pat.amount_involved.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{pat.details}</p>
-                  {pat.participating_nodes && pat.participating_nodes.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
-                      <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path:</span>
-                      {pat.participating_nodes.map((node: string, i: number) => (
-                        <span key={i} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
-                          {node}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Synthetic Disclaimer Banner */}
+            <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.78rem", marginBottom: "1rem" }}>
+              <strong>Synthetic Demonstration Notice:</strong> This workflow operates exclusively on deterministic synthetic records in FalkorDB graph <code>nexusact_fraud_demo</code>. No real individuals, accounts, or banks are represented.
             </div>
-          )}
 
-          {/* Benign Control Verification */}
-          {report?.fraud_result?.benign_controls && (
-            <div>
-              <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "#15803d" }}>
-                Verified Benign Control Accounts (False-Positive Suppression)
-              </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-                {report.fraud_result.benign_controls.map((ctrl, idx) => (
-                  <div key={idx} style={{ padding: "0.75rem", borderRadius: "6px", border: "1px solid #86efac", backgroundColor: "#f0fdf4" }}>
+            {report?.fraud_result?.patterns_detected && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
+                <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                  Detected Suspicious Topology Patterns ({report.fraud_result.patterns_detected.length})
+                </h4>
+                {report.fraud_result.patterns_detected.map((pat, idx) => (
+                  <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "0.82rem", color: "#15803d", fontFamily: "var(--font-mono)" }}>{ctrl.account_id}</strong>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#15803d" }}>VERIFIED BENIGN</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type}</strong>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
+                          Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
+                        </span>
+                      </div>
+                      {pat.amount_involved && (
+                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                          Flow: ${pat.amount_involved.toLocaleString()}
+                        </span>
+                      )}
                     </div>
-                    <p style={{ fontSize: "0.74rem", color: "#166534", margin: "0.3rem 0 0 0" }}>{ctrl.status_reason || ctrl.reason}</p>
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{pat.details}</p>
+                    {pat.participating_nodes && pat.participating_nodes.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path:</span>
+                        {pat.participating_nodes.map((node: string, i: number) => (
+                          <span key={i} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
+                            {node}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Benign Control Verification */}
+            {report?.fraud_result?.benign_controls && (
+              <div>
+                <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "#15803d" }}>
+                  Verified Benign Control Accounts (False-Positive Suppression)
+                </h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                  {report.fraud_result.benign_controls.map((ctrl, idx) => (
+                    <div key={idx} style={{ padding: "0.75rem", borderRadius: "6px", border: "1px solid #86efac", backgroundColor: "#f0fdf4" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <strong style={{ fontSize: "0.82rem", color: "#15803d", fontFamily: "var(--font-mono)" }}>{ctrl.account_id}</strong>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#15803d" }}>VERIFIED BENIGN</span>
+                      </div>
+                      <p style={{ fontSize: "0.74rem", color: "#166534", margin: "0.3rem 0 0 0" }}>{ctrl.status_reason || ctrl.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {activeTab === "simulation" && (
-        <CounterfactualDiff
-          simulation={report?.simulation_result ?? null}
-          activeView={simulationView}
-          onToggleView={setSimulationView}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="simulation"
+            investigationId={report?.investigation_id || `inv:simulation_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              target_module_id: sim?.target_module_id,
+              disappeared_paths_count: sim?.disappeared_paths_count || 0,
+              surviving_modules_count: sim?.surviving_modules_count || 0,
+              newly_isolated: sim?.newly_isolated_modules?.length || 0,
+            }}
+          />
+          <CounterfactualDiff
+            simulation={report?.simulation_result ?? null}
+            activeView={simulationView}
+            onToggleView={setSimulationView}
+          />
+        </div>
       )}
 
       {activeTab === "reviewers" && (
-        <ReviewerRankings data={report?.reviewer_result ?? null} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="reviewers"
+            investigationId={report?.investigation_id || `inv:reviewers_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              candidates_count: report?.reviewer_result?.candidates?.length || 0,
+              top_candidate: report?.reviewer_result?.candidates?.[0]?.name,
+              target_id: selectedModule,
+            }}
+          />
+          <ReviewerRankings data={report?.reviewer_result ?? null} />
+        </div>
       )}
 
       {activeTab === "trace" && (
-        <AgentTrace
-          steps={report?.steps ?? []}
-          investigationId={report?.investigation_id}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="trace"
+            investigationId={report?.investigation_id || `inv:trace_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              steps_count: report?.steps?.length || 0,
+              tools_executed: report?.steps?.map((s) => s.tool_name) || [],
+            }}
+          />
+          <AgentTrace
+            steps={report?.steps ?? []}
+            investigationId={report?.investigation_id}
+          />
+        </div>
       )}
 
       {activeTab === "neighborhood" && (
-        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <div>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-                Neighborhood & Directed Paths
-              </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="neighborhood"
+            investigationId={report?.investigation_id || `inv:neighborhood_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              target_id: selectedModule,
+              in_degree: subgraph?.edges.filter((e) => e.target === selectedModule).length || 0,
+              out_degree: subgraph?.edges.filter((e) => e.source === selectedModule).length || 0,
+              path_hops: activePathNodes.length >= 2 ? activePathNodes.length - 1 : 0,
+            }}
+          />
+          <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                  Neighborhood & Directed Paths
+                </h3>
               <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
                 Topological path verification and 1-hop caller/callee connections in FalkorDB graph.
               </p>
@@ -2002,58 +2329,92 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             );
           })()}
         </div>
+      </div>
       )}
 
       {activeTab === "provenance" && (
-        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.5rem", color: "var(--text-primary)" }}>
-            Data Source Capabilities & Provenance
-          </h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-            Discloses exact collection sources, revisions, and limitations for the selected repository.
-          </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="provenance"
+            investigationId={report?.investigation_id || `inv:provenance_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              repo_id: selectedRepoId,
+              commit_sha: snapshot?.commit_sha,
+              fingerprint: snapshot?.working_tree_fingerprint,
+              status: snapshot?.freshness_status,
+            }}
+          />
+          <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+            <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.5rem", color: "var(--text-primary)" }}>
+              Data Source Capabilities & Provenance
+            </h3>
+            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+              Discloses exact collection sources, revisions, and limitations for the selected repository.
+            </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {sourceMetadata?.sources?.map((s) => (
-              <div key={s.source_id} style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.85rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>
-                    {s.source_type === "github" ? "GitHub Public API" : "Local Git Repository"}
-                  </span>
-                  <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "#dcfce7", color: "#15803d", fontWeight: 600 }}>
-                    {s.status}
-                  </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {sourceMetadata?.sources?.map((s) => (
+                <div key={s.source_id} style={{ border: "1px solid var(--border-subtle)", borderRadius: "6px", padding: "0.85rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+                      {s.source_type === "github" ? "GitHub Public API" : "Local Git Repository"}
+                    </span>
+                    <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "#dcfce7", color: "#15803d", fontWeight: 600 }}>
+                      {s.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: "0.4rem" }}>
+                    <div>Categories: {s.data_categories.join(", ")}</div>
+                    <div>Retrieved at: {s.retrieval_timestamp}</div>
+                  </div>
                 </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: "0.4rem" }}>
-                  <div>Categories: {s.data_categories.join(", ")}</div>
-                  <div>Retrieved at: {s.retrieval_timestamp}</div>
-                </div>
-              </div>
-            ))}
+              ))}
 
-            {activeRepo?.known_gaps && activeRepo.known_gaps.length > 0 && (
-              <div style={{ border: "1px solid #fde68a", backgroundColor: "#fffbeb", borderRadius: "6px", padding: "0.85rem" }}>
-                <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "#92400e", marginBottom: "0.4rem" }}>
-                  Disclosed Evidence Gaps:
+              {activeRepo?.known_gaps && activeRepo.known_gaps.length > 0 && (
+                <div style={{ border: "1px solid #fde68a", backgroundColor: "#fffbeb", borderRadius: "6px", padding: "0.85rem" }}>
+                  <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "#92400e", marginBottom: "0.4rem" }}>
+                    Disclosed Evidence Gaps:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.78rem", color: "#78350f" }}>
+                    {activeRepo.known_gaps.map((gap, i) => (
+                      <li key={i}>{gap}</li>
+                    ))}
+                  </ul>
                 </div>
-                <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.78rem", color: "#78350f" }}>
-                  {activeRepo.known_gaps.map((gap, i) => (
-                    <li key={i}>{gap}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === "action" && (
-        <IssueProposalCard
-          investigationId={report?.investigation_id ?? "inv_pending"}
-          defaultTitle={report?.action_proposal?.title}
-          defaultBody={report?.action_proposal?.body}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+          <PanelExplanation
+            panelId="action"
+            investigationId={report?.investigation_id || `inv:action_${selectedRepoId}`}
+            question={question}
+            targetId={selectedModule}
+            repoId={selectedRepoId}
+            commitSha={snapshot?.commit_sha}
+            dataSummary={{
+              action_type: report?.action_proposal?.title ? "CREATE_ISSUE" : "NONE",
+              status: report?.action_proposal ? "PROPOSED" : "PENDING",
+              title: report?.action_proposal?.title,
+            }}
+          />
+          <IssueProposalCard
+            investigationId={report?.investigation_id ?? "inv_pending"}
+            defaultTitle={report?.action_proposal?.title}
+            defaultBody={report?.action_proposal?.body}
+          />
+        </div>
       )}
+        </main>
+      </div>
     </div>
   );
 };

@@ -136,6 +136,18 @@ vi.mock("../src/api/client", () => ({
     content: "# test code",
     language: "python",
   }),
+  fetchPanelExplanation: vi.fn().mockResolvedValue({
+    explanation_id: "exp_test",
+    panel_id: "graph",
+    headline: "Grounded Graph Explanation",
+    summary: "Mock explanation for testing.",
+    grounded_facts: ["Fact 1"],
+    inferences: ["Inference 1"],
+    confidence_rating: "HIGH",
+    evidence_status: "VERIFIED",
+    provider: "gemini-fallback",
+    cached: false,
+  }),
 }));
 
 describe("Phase 10 Universal GAF Input-Driven Navigation and Workspace", () => {

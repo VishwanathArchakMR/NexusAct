@@ -217,9 +217,30 @@ class RepositoryAstParser:
                 target_mod: Optional[str] = None
                 target_file: Optional[str] = None
 
+                candidate_paths: List[str] = []
                 if is_rel:
                     base_resolved = (Path(file_dir) / target_spec).as_posix()
-                    norm_path = os.path.normpath(base_resolved).replace("\\", "/")
+                    candidate_paths.append(os.path.normpath(base_resolved).replace("\\", "/"))
+                else:
+                    # Support path aliases like @/, ~/, and root-relative paths
+                    clean_spec = target_spec
+                    if clean_spec.startswith("@/"):
+                        clean_spec = clean_spec[2:]
+                    elif clean_spec.startswith("~/"):
+                        clean_spec = clean_spec[2:]
+
+                    # Potential base roots in JS/TS projects
+                    candidate_paths.extend(
+                        [
+                            clean_spec,
+                            f"src/{clean_spec}",
+                            f"frontend/src/{clean_spec}",
+                            (Path(file_dir) / clean_spec).as_posix(),
+                        ]
+                    )
+
+                for cand in candidate_paths:
+                    norm_path = os.path.normpath(cand).replace("\\", "/")
                     if norm_path.startswith("./"):
                         norm_path = norm_path[2:]
 
@@ -234,11 +255,15 @@ class RepositoryAstParser:
                         f"{norm_path}/index.js",
                         f"{norm_path}/index.jsx",
                     ]
+                    found = False
                     for c in candidate_keys:
                         if c in self.file_map:
                             target_file = c
                             target_mod = self.file_map[c].module_name
+                            found = True
                             break
+                    if found:
+                        break
 
                 records.append(
                     ImportRecord(
@@ -367,23 +392,67 @@ class RepositoryAstParser:
         self, candidate: str, fallback_module: Optional[str] = None
     ) -> tuple[Optional[str], Optional[str]]:
         """Resolves a candidate import name against known local files and packages."""
-        # Check if candidate itself is a known module
+        # 1. Check if candidate itself is a known module
         if candidate in self.known_modules:
             matching_file = self._find_file_for_module(candidate)
             return candidate, matching_file
 
-        # Check fallback base module
+        # 2. Check fallback base module
         if fallback_module and fallback_module in self.known_modules:
             matching_file = self._find_file_for_module(fallback_module)
             return fallback_module, matching_file
 
-        # Check prefixes (e.g. `backend.app.main.app` -> module `backend.app.main`)
+        # 3. Check prefixes of candidate (e.g. `backend.app.main.app` -> module `backend.app.main`)
         parts = candidate.split(".")
         for i in range(len(parts) - 1, 0, -1):
             prefix = ".".join(parts[:i])
             if prefix in self.known_modules:
                 matching_file = self._find_file_for_module(prefix)
                 return prefix, matching_file
+
+        # 4. Check sibling / package-relative candidates from fallback_module
+        if fallback_module:
+            fb_parts = fallback_module.split(".")
+            # Try combining with fallback package
+            for k in range(len(fb_parts), 0, -1):
+                parent_prefix = ".".join(fb_parts[:k])
+                cand_sub = f"{parent_prefix}.{candidate}"
+                if cand_sub in self.known_modules:
+                    matching_file = self._find_file_for_module(cand_sub)
+                    return cand_sub, matching_file
+                for i in range(len(parts) - 1, 0, -1):
+                    cand_sub_prefix = f"{parent_prefix}.{'.'.join(parts[:i])}"
+                    if cand_sub_prefix in self.known_modules:
+                        matching_file = self._find_file_for_module(cand_sub_prefix)
+                        return cand_sub_prefix, matching_file
+
+        # 5. Check standard repository source roots (e.g. `backend`, `src`, `lib`, `app`)
+        common_roots = ("backend", "src", "app", "lib", "server", "pkg", "frontend")
+        for root in common_roots:
+            root_cand = f"{root}.{candidate}"
+            if root_cand in self.known_modules:
+                matching_file = self._find_file_for_module(root_cand)
+                return root_cand, matching_file
+            for i in range(len(parts) - 1, 0, -1):
+                root_prefix = f"{root}.{'.'.join(parts[:i])}"
+                if root_prefix in self.known_modules:
+                    matching_file = self._find_file_for_module(root_prefix)
+                    return root_prefix, matching_file
+
+        # 6. Check unique suffix match across known modules (e.g. candidate `core.config` -> `backend.app.core.config`)
+        suffix_match = f".{candidate}"
+        matching_mods = [m for m in self.known_modules if m.endswith(suffix_match)]
+        if len(matching_mods) == 1:
+            matching_file = self._find_file_for_module(matching_mods[0])
+            return matching_mods[0], matching_file
+        elif len(matching_mods) > 1 and fallback_module:
+            # Pick the one that shares the longest common prefix with fallback_module
+            best_mod = max(
+                matching_mods,
+                key=lambda m: len(os.path.commonprefix([m, fallback_module])),
+            )
+            matching_file = self._find_file_for_module(best_mod)
+            return best_mod, matching_file
 
         return None, None
 

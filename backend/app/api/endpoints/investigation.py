@@ -6,6 +6,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from backend.app.agent.explanation import (
+    PanelExplanationRequest,
+    PanelExplanationResponse,
+    generate_panel_explanation,
+)
 from backend.app.agent.planner import (
     AdaptiveInvestigationAgent,
     InvestigationReport,
@@ -104,6 +109,16 @@ async def run_investigation(payload: InvestigationRequest) -> InvestigationRepor
     except Exception as e:
         logger.error("Investigation failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")
+
+
+@router.post("/investigation/explain-panel", response_model=PanelExplanationResponse)
+async def explain_investigation_panel(payload: PanelExplanationRequest) -> PanelExplanationResponse:
+    """Generates an evidence-grounded structured explanation for a specific investigation panel."""
+    try:
+        return await generate_panel_explanation(payload)
+    except Exception as e:
+        logger.error("Panel explanation failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Explanation generation failed: {str(e)}")
 
 
 @router.post("/tools/trace-impact", response_model=TraceImpactOutput)
