@@ -30,6 +30,7 @@ export interface CodeInspectorProps {
   repoId: string;
   commitSha?: string;
   activeTargetNodeId?: string;
+  targetFilePath?: string;
   onNavigateToGraph?: (moduleId: string) => void;
   onTriggerInvestigation?: (question: string, targetModuleId?: string) => void;
 }
@@ -38,6 +39,7 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
   repoId,
   commitSha,
   activeTargetNodeId,
+  targetFilePath,
   onNavigateToGraph,
   onTriggerInvestigation,
 }) => {
@@ -114,6 +116,14 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTargetNodeId]);
+
+  // Synchronize when targetFilePath is explicitly provided
+  useEffect(() => {
+    if (targetFilePath && targetFilePath !== selectedFilePath) {
+      handleSelectFile(targetFilePath);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetFilePath]);
 
   function findFirstFile(nodes: FileTreeNode[]): FileTreeNode | null {
     for (const node of nodes) {

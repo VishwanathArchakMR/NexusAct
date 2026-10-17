@@ -31,12 +31,15 @@ class VulnerabilityFinding(BaseModel):
     vuln_id: str
     package_name: str
     package_version: str
+    ecosystem: str = "PyPI"
     fixed_version: Optional[str] = None
     severity: str = "MEDIUM"  # CRITICAL, HIGH, MEDIUM, LOW
     summary: str
+    details: str = ""
     source_url: str
     affected_modules: List[str] = Field(default_factory=list)
     path_chain: List[str] = Field(default_factory=list)
+    reachability_status: Optional[str] = None
 
 
 class SecurityTriageInput(BaseModel):
@@ -122,6 +125,31 @@ def _parse_package_lock_json(content: str) -> List[Dict[str, Any]]:
                 )
     except Exception as e:
         logger.warning("Failed to parse package-lock.json: %s", e)
+    return results
+
+
+def _parse_pyproject_toml(content: str) -> List[Dict[str, Any]]:
+    """Extracts declared dependencies from pyproject.toml."""
+    results = []
+    try:
+        import tomllib
+
+        data = tomllib.loads(content)
+        deps = data.get("project", {}).get("dependencies", [])
+        for item in deps:
+            clean_item = re.sub(r"\[.*?\]", "", item).strip()
+            match = re.match(r"^([A-Za-z0-9_\-\.]+)\s*(?:==|>=|<=|~=)\s*([0-9A-Za-z_\-\.]+)", clean_item)
+            if match:
+                results.append(
+                    {
+                        "name": match.group(1),
+                        "version": match.group(2),
+                        "ecosystem": "PyPI",
+                        "is_exact": "==" in clean_item,
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to parse pyproject.toml: %s", e)
     return results
 
 
@@ -239,6 +267,14 @@ async def execute_security_triage(
             manifests_inspected.append("requirements.txt")
         except Exception as e:
             logger.warning("Failed reading requirements.txt: %s", e)
+
+    pyproj = repo_root / "pyproject.toml"
+    if pyproj.exists():
+        try:
+            discovered_deps.extend(_parse_pyproject_toml(pyproj.read_text(encoding="utf-8", errors="replace")))
+            manifests_inspected.append("pyproject.toml")
+        except Exception as e:
+            logger.warning("Failed reading pyproject.toml: %s", e)
 
     # Filter if requested
     if payload.package_filter:
@@ -388,17 +424,25 @@ async def execute_security_triage(
             except Exception as e:
                 logger.debug("Module linking error: %s", e)
 
+            raw_details = v.get("details") or summary
+            reach_status = (
+                "REACHABLE_INTERNAL_DEPENDENCY" if affected_modules else "PACKAGE_PRESENT_UNREACHABLE_OR_ISOLATED"
+            )
+
             findings.append(
                 VulnerabilityFinding(
                     vuln_id=vid,
                     package_name=pkg_name,
                     package_version=pkg_ver,
+                    ecosystem=eco,
                     fixed_version=fixed_ver,
                     severity=sev_str,
                     summary=summary,
+                    details=raw_details,
                     source_url=source_url,
                     affected_modules=affected_modules,
                     path_chain=path_chain,
+                    reachability_status=reach_status,
                 )
             )
 

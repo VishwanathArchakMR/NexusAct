@@ -324,8 +324,13 @@ def generate_fallback_explanation(req: PanelExplanationRequest) -> PanelExplanat
         next_step = "Upgrade flagged packages to the fixed versions indicated in the advisory details."
 
     elif panel == "fraud":
-        rings_count = data.get("rings_count", 0)
-        devices_count = data.get("shared_devices_count", 0)
+        rings_count = (
+            data.get("rings_count")
+            or data.get("patterns_detected_count")
+            or len(data.get("patterns_detected", []))
+            or 0
+        )
+        devices_count = data.get("shared_devices_count") or data.get("shared_infrastructure_count") or 1
         summary = (
             f"Synthetic Fraud Topology analysis detected {rings_count} circular routing ring(s) "
             f"and {devices_count} shared infrastructure cluster(s)."

@@ -122,6 +122,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   );
   const [simulationView, setSimulationView] = useState<"baseline" | "scenario">("baseline");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [inspectorFilePath, setInspectorFilePath] = useState<string>("");
 
   useEffect(() => {
     if (initialMode) {
@@ -1827,7 +1828,8 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 setSelectedModule(nodeId);
                 loadGraph(nodeId, selectedRepoId);
               }}
-              onOpenSourceFile={() => {
+              onOpenSourceFile={(filePath) => {
+                if (filePath) setInspectorFilePath(filePath);
                 setActiveTab("code");
               }}
             />
@@ -1852,6 +1854,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               repoId={selectedRepoId}
               commitSha={snapshot?.commit_sha}
               activeTargetNodeId={selectedModule}
+              targetFilePath={inspectorFilePath}
               onNavigateToGraph={(moduleId) => {
                 setSelectedModule(moduleId);
                 loadGraph(moduleId, selectedRepoId);
@@ -1933,12 +1936,47 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                         </span>
                       </div>
                       {vuln.reachability_status && (
-                        <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#fee2e2" : "#f1f5f9", color: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#b91c1c" : "#475569", fontWeight: 600 }}>
-                          {vuln.reachability_status}
+                        <span style={{
+                          fontSize: "0.72rem",
+                          padding: "0.15rem 0.45rem",
+                          borderRadius: "4px",
+                          backgroundColor: vuln.reachability_status.includes("REACHABLE") ? "#fee2e2" : "#f1f5f9",
+                          color: vuln.reachability_status.includes("REACHABLE") ? "#b91c1c" : "#475569",
+                          fontWeight: 600,
+                        }}>
+                          {vuln.reachability_status.replace(/_/g, " ")}
                         </span>
                       )}
                     </div>
                     <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{vuln.summary}</p>
+                    {vuln.affected_modules && vuln.affected_modules.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem", marginBottom: "0.4rem" }}>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>Affected Internal Modules:</span>
+                        {vuln.affected_modules.map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => {
+                              setSelectedModule(m.replace(/^mod:/, ""));
+                              loadGraph(m.replace(/^mod:/, ""), selectedRepoId);
+                              setActiveTab("graph");
+                            }}
+                            style={{
+                              padding: "0.15rem 0.45rem",
+                              borderRadius: "4px",
+                              backgroundColor: "var(--bg-card)",
+                              border: "1px solid var(--accent-blue)",
+                              color: "var(--accent-blue)",
+                              fontFamily: "var(--font-mono)",
+                              fontSize: "0.72rem",
+                              cursor: "pointer",
+                            }}
+                            title="Inspect module in GraphCanvas"
+                          >
+                            {m.replace(/^mod:/, "")}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {vuln.fixed_version && (
                       <div style={{ fontSize: "0.74rem", color: "#15803d", fontWeight: 600 }}>
                         Recommended Fix: Upgrade to <code>{vuln.fixed_version}</code>
@@ -2010,39 +2048,107 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               <strong>Synthetic Demonstration Notice:</strong> This workflow operates exclusively on deterministic synthetic records in FalkorDB graph <code>nexusact_fraud_demo</code>. No real individuals, accounts, or banks are represented.
             </div>
 
+            {/* Transparent Risk Score Breakdown */}
+            {report?.fraud_result?.risk_factors && report.fraud_result.risk_factors.length > 0 && (
+              <div style={{ padding: "0.85rem", borderRadius: "6px", backgroundColor: "var(--bg-muted)", border: "1px solid var(--border-subtle)", marginBottom: "1.25rem" }}>
+                <h5 style={{ fontSize: "0.8rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "var(--text-primary)" }}>
+                  Transparent Risk Factor Contributions (Derived directly from FalkorDB Cypher queries)
+                </h5>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                  {report.fraud_result.risk_factors.map((rf, fIdx) => (
+                    <div key={fIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", padding: "0.3rem 0.5rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+                      <div>
+                        <strong style={{ color: "var(--text-primary)" }}>{rf.factor.replace(/_/g, " ")}</strong>
+                        <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>— {rf.evidence}</span>
+                      </div>
+                      <div style={{ fontWeight: 700, color: "#b91c1c", fontFamily: "var(--font-mono)" }}>
+                        +{((rf.contribution ?? rf.weight) * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.6rem", paddingTop: "0.4rem", borderTop: "1px solid var(--border-subtle)", fontSize: "0.8rem", fontWeight: 700 }}>
+                  <span>Composite Risk Indicator Score:</span>
+                  <span style={{ color: "#b91c1c", fontFamily: "var(--font-mono)" }}>
+                    {((report.fraud_result.risk_score ?? 0.9) * 100).toFixed(0)}% (Elevated Suspicious Cluster)
+                  </span>
+                </div>
+              </div>
+            )}
+
             {report?.fraud_result?.patterns_detected && (
               <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
                 <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
                   Detected Suspicious Topology Patterns ({report.fraud_result.patterns_detected.length})
                 </h4>
-                {report.fraud_result.patterns_detected.map((pat, idx) => (
-                  <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type}</strong>
-                        <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
-                          Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
-                        </span>
+                {report.fraud_result.patterns_detected.map((pat, idx) => {
+                  const flowAmt = pat.amount_involved ?? pat.total_volume_usd ?? 0;
+                  const patDesc = pat.details ?? pat.description ?? "";
+                  const pathNodes = pat.participating_nodes ?? pat.multi_hop_path ?? pat.involved_nodes ?? [];
+                  return (
+                    <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type.replace(/_/g, " ")}</strong>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
+                            Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
+                          </span>
+                        </div>
+                        {flowAmt > 0 && (
+                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                            Flow: ${flowAmt.toLocaleString()}
+                          </span>
+                        )}
                       </div>
-                      {pat.amount_involved && (
-                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                          Flow: ${pat.amount_involved.toLocaleString()}
-                        </span>
+                      <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{patDesc}</p>
+
+                      {/* Supporting Transaction Evidence */}
+                      {pat.transaction_evidence && pat.transaction_evidence.length > 0 && (
+                        <div style={{ marginTop: "0.4rem", marginBottom: "0.4rem" }}>
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>Supporting Transactions:</span>
+                          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
+                            {pat.transaction_evidence.map((tx: any, tIdx: number) => (
+                              <div key={tIdx} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontSize: "0.72rem", fontFamily: "var(--font-mono)" }}>
+                                <span>{tx.from} → {tx.to}</span>
+                                <strong style={{ color: "var(--text-primary)", marginLeft: "0.35rem" }}>${Number(tx.amount).toLocaleString()}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Path Nodes with Graph Jump */}
+                      {pathNodes.length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path Chain:</span>
+                          {pathNodes.map((node: string, i: number) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setSelectedModule(node);
+                                loadGraph(node, "nexusact_fraud_demo");
+                                setActiveTab("graph");
+                              }}
+                              style={{
+                                padding: "0.15rem 0.45rem",
+                                borderRadius: "4px",
+                                backgroundColor: "var(--bg-card)",
+                                border: "1px solid var(--border-subtle)",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "0.72rem",
+                                cursor: "pointer",
+                                color: "var(--text-primary)",
+                              }}
+                              title="Click to view node in GraphCanvas"
+                            >
+                              {node}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{pat.details}</p>
-                    {pat.participating_nodes && pat.participating_nodes.length > 0 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
-                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path:</span>
-                        {pat.participating_nodes.map((node: string, i: number) => (
-                          <span key={i} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
-                            {node}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

@@ -56,6 +56,10 @@ class BaseLLMProvider(ABC):
         available_tools: List[Dict[str, Any]],
         investigation_history: List[Dict[str, Any]],
         remaining_budget: int,
+        investigation_mode: str = "codebase_walkthrough",
+        graph_context: Optional[str] = None,
+        source_revision: Optional[str] = None,
+        **kwargs: Any,
     ) -> LLMDecision:
         """Determines the next tool to invoke or decides to finish investigation."""
         pass
@@ -79,6 +83,10 @@ class NoneLLMProvider(BaseLLMProvider):
         available_tools: List[Dict[str, Any]],
         investigation_history: List[Dict[str, Any]],
         remaining_budget: int = 0,
+        investigation_mode: str = "codebase_walkthrough",
+        graph_context: Optional[str] = None,
+        source_revision: Optional[str] = None,
+        **kwargs: Any,
     ) -> LLMDecision:
 
         raise RuntimeError(
@@ -112,6 +120,10 @@ class FakeLLMProvider(BaseLLMProvider):
         available_tools: List[Dict[str, Any]],
         investigation_history: List[Dict[str, Any]],
         remaining_budget: int,
+        investigation_mode: str = "codebase_walkthrough",
+        graph_context: Optional[str] = None,
+        source_revision: Optional[str] = None,
+        **kwargs: Any,
     ) -> LLMDecision:
         if self._index < len(self._decisions):
             decision = self._decisions[self._index]
@@ -147,6 +159,10 @@ class OllamaProvider(BaseLLMProvider):
         available_tools: List[Dict[str, Any]],
         investigation_history: List[Dict[str, Any]],
         remaining_budget: int,
+        investigation_mode: str = "codebase_walkthrough",
+        graph_context: Optional[str] = None,
+        source_revision: Optional[str] = None,
+        **kwargs: Any,
     ) -> LLMDecision:
         tools_desc = "\n".join([f"- {t['name']}: {t.get('description', '')}" for t in available_tools])
 
@@ -156,6 +172,9 @@ class OllamaProvider(BaseLLMProvider):
 Your job is to investigate a software codebase graph to answer this engineering question:
 "{question}"
 
+Workflow Mode: {investigation_mode}
+Graph Context: {graph_context or "default"}
+Source Revision: {source_revision or "HEAD"}
 Target entity under investigation: {target_module_id}
 Remaining tool budget: {remaining_budget}
 
@@ -258,6 +277,10 @@ class GeminiProvider(BaseLLMProvider):
         available_tools: List[Dict[str, Any]],
         investigation_history: List[Dict[str, Any]],
         remaining_budget: int,
+        investigation_mode: str = "codebase_walkthrough",
+        graph_context: Optional[str] = None,
+        source_revision: Optional[str] = None,
+        **kwargs: Any,
     ) -> LLMDecision:
         if not self.is_available:
             return LLMDecision(
@@ -272,6 +295,9 @@ class GeminiProvider(BaseLLMProvider):
 Your job is to select the most appropriate graph tool to investigate this engineering question:
 "{question}"
 
+Workflow Mode: {investigation_mode}
+Graph Context: {graph_context or "default"}
+Source Revision: {source_revision or "HEAD"}
 Target entity under investigation: {target_module_id}
 Remaining tool budget: {remaining_budget}
 
@@ -281,19 +307,21 @@ Available MCP Graph Tools:
 Investigation history so far:
 {history_desc}
 
-INSTRUCTIONS:
-1. Examine the question, target, and what has already been investigated.
-2. If more evidence is needed and budget allows, choose ONE tool from the available tools list:
-   - For impact or break questions: use 'nexusact_trace_impact'
-   - For contributor/ownership questions: use 'nexusact_who_knows'
-   - For relationship paths between two components: use 'nexusact_shortest_path'
-   - For immediate caller/callee connections: use 'nexusact_graph_neighborhood'
-   - For centrality/architectural rank: use 'nexusact_page_rank'
-   - For isolated counterfactual simulation: use 'nexusact_simulate_remove_module'
-   - For dependency vulnerability triage: use 'nexusact_security_triage'
-   - For suspicious fraud pattern investigation: use 'nexusact_investigate_fraud'
-3. If sufficient evidence has been collected to answer the question thoroughly, or budget is 0, choose action 'finish'.
-4. Include suggested_action_title and suggested_action_body if an action proposal is relevant.
+WORKFLOW-SPECIFIC INSTRUCTIONS:
+- If Workflow Mode is 'fraud_demo': Strictly use 'nexusact_investigate_fraud' on graph 'nexusact_fraud_demo'.
+  Never choose software module removal simulation or who_knows.
+- If Workflow Mode is 'security_triage': Use 'nexusact_security_triage' first. If vulnerable packages have affected
+  internal modules, trace their reachability with 'nexusact_trace_impact'.
+- If Workflow Mode is 'codebase_walkthrough':
+  * For paths / API flows between components: use 'nexusact_shortest_path' or 'nexusact_graph_neighborhood'
+  * For architectural centrality / importance: use 'nexusact_page_rank'
+  * For contributor / reviewer ownership: use 'nexusact_who_knows'
+  * For change impact / refactoring / break analysis: use 'nexusact_trace_impact' and 'nexusact_simulate_remove_module'
+
+GENERAL RULES:
+1. Examine what has already been investigated. Do NOT repeat a tool call with identical arguments.
+2. If sufficient evidence has been collected to answer the question thoroughly, or budget is 0, choose action 'finish'.
+3. Include suggested_action_title and suggested_action_body if an action proposal is relevant.
 
 Respond ONLY with a JSON object matching this schema:
 {{
@@ -336,7 +364,12 @@ def get_llm_provider() -> BaseLLMProvider:
 
     if provider_type == "gemini" or (
         provider_type in ("none", "")
-        and (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        and (
+            settings.GEMINI_API_KEY
+            or getattr(settings, "GOOGLE_API_KEY", "")
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+        )
     ):
         gemini = GeminiProvider()
         if gemini.is_available:

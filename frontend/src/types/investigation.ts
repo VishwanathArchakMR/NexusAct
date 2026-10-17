@@ -196,6 +196,7 @@ export interface FraudPattern {
   transaction_evidence?: Array<{ from: string; to: string; amount: number; time: string }>;
   risk_score?: number;
   amount_involved?: number;
+  total_volume_usd?: number;
   details?: string;
   participating_nodes?: string[];
 }
@@ -211,12 +212,20 @@ export interface FraudInvestigationOutput {
   graph_name: string;
   investigation_question: string;
   risk_indicator: string;
+  risk_score?: number;
+  risk_factors?: Array<{
+    factor: string;
+    weight: number;
+    contribution: number;
+    evidence: string;
+  }>;
   patterns_detected: FraudPattern[];
   benign_controls: BenignControl[];
   total_suspicious_volume_usd: number;
   recommended_action: string;
   synthetic_disclaimer: string;
   uncertainties: string[];
+  evidence_chain?: string[];
 }
 
 export interface SourceSnapshot {

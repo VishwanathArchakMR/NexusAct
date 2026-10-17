@@ -446,6 +446,7 @@ class AdaptiveInvestigationAgent:
         remaining_budget = self.max_tool_budget
 
         # 3. Adaptive Decision Loop
+        executed_calls = set()
         while remaining_budget > 0:
             if not provider.is_available:
                 decision = self._heuristic_fallback_decision(
@@ -454,6 +455,9 @@ class AdaptiveInvestigationAgent:
                     steps=steps,
                     impact_data=impact_data,
                     repo_id=resolved_repo_id,
+                    investigation_mode=mode,
+                    security_triage_data=security_triage_data,
+                    fraud_data=fraud_data,
                 )
             else:
                 decision = await provider.decide_next_step(
@@ -462,6 +466,9 @@ class AdaptiveInvestigationAgent:
                     available_tools=tools_metadata,
                     investigation_history=investigation_history,
                     remaining_budget=remaining_budget,
+                    investigation_mode=mode,
+                    graph_context=target_graph,
+                    source_revision=commit_sha,
                 )
 
             if decision.action == "finish" or not decision.tool_call:
@@ -508,6 +515,20 @@ class AdaptiveInvestigationAgent:
 
             if tool_name == "nexusact_security_triage" and "repository_id" not in tool_args and resolved_repo_id:
                 tool_args["repository_id"] = resolved_repo_id
+
+            # Loop detection: detect repeated calls with equivalent arguments and stop pointless loops
+            call_sig = (tool_name, json.dumps(tool_args, sort_keys=True))
+            if call_sig in executed_calls:
+                logger.info(
+                    "Planner detected repeated tool call '%s' with equivalent arguments. Ending loop.",
+                    tool_name,
+                )
+                final_summary = (
+                    decision.finish_summary
+                    or f"Investigation concluded: sufficient evidence collected; stopped loop on '{tool_name}'."
+                )
+                break
+            executed_calls.add(call_sig)
 
             # 4. Invoke MCP Tool
             step_start = time.perf_counter()
@@ -696,84 +717,103 @@ class AdaptiveInvestigationAgent:
         steps: List[InvestigationStep],
         impact_data: Optional[TraceImpactOutput],
         repo_id: Optional[str] = None,
+        investigation_mode: str = "codebase_walkthrough",
+        security_triage_data: Optional[SecurityTriageOutput] = None,
+        fraud_data: Optional[FraudInvestigationOutput] = None,
     ) -> LLMDecision:
-        """Determines the next logical tool in an evidence chain when no LLM is available."""
+        """Determines the next logical graph tool based on workflow mode, question intent, and collected evidence."""
         called_tools = {s.tool_name for s in steps}
         q_lower = question.lower()
+        mode = (investigation_mode or "codebase_walkthrough").lower()
 
-        # Security triage investigation
-        if (
-            any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise", "advisory", "audit"])
-            and "nexusact_security_triage" not in called_tools
-        ):
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_security_triage",
-                    arguments={"repository_id": repo_id or "repo:local_nexusact"},
-                    reasoning="Triage declared repository dependencies against public OSV vulnerability records.",
-                ),
-            )
-        if "nexusact_security_triage" in called_tools and any(
-            w in q_lower for w in ["security", "vulnerability", "cve", "triage"]
-        ):
-            return LLMDecision(
-                action="finish",
-                finish_summary="Security vulnerability triage and component impact analysis completed.",
-            )
-
-        # Synthetic fraud investigation
-        if (
-            any(w in q_lower for w in ["fraud", "suspicious", "transfer", "cycle", "laundering", "ring"])
-            and "nexusact_investigate_fraud" not in called_tools
-        ):
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_investigate_fraud",
-                    arguments={"question": question},
-                    reasoning=(
-                        "Investigate multi-hop transfer cycles and shared device "
-                        "clusters in synthetic fraud demonstration graph."
-                    ),
-                ),
-            )
-        if "nexusact_investigate_fraud" in called_tools and any(
-            w in q_lower for w in ["fraud", "suspicious", "transfer"]
-        ):
-            return LLMDecision(
-                action="finish",
-                finish_summary="Synthetic fraud pattern investigation and control audit completed.",
-            )
-
-        # If repo-wide / no target ID
-        if not target_id:
-            if (
-                "source" in q_lower or "metadata" in q_lower or "provenance" in q_lower or "gap" in q_lower
-            ) and "nexusact_source_metadata" not in called_tools:
+        # ======================================================================
+        # 1. SPECIALIZED WORKFLOW: FRAUD INVESTIGATION DEMO
+        # ======================================================================
+        is_fraud = mode == "fraud_demo" or any(
+            w in q_lower for w in ["fraud", "suspicious", "transfer", "cycle", "laundering", "ring"]
+        )
+        if is_fraud:
+            if "nexusact_investigate_fraud" not in called_tools:
                 return LLMDecision(
                     action="call_tool",
                     tool_call=LLMToolCall(
-                        tool_name="nexusact_source_metadata",
+                        tool_name="nexusact_investigate_fraud",
+                        arguments={
+                            "question": question,
+                            "target_account_id": target_id if target_id and target_id.startswith("acc:") else None,
+                            "graph_name": "nexusact_fraud_demo",
+                        },
+                        reasoning=(
+                            "Investigate multi-hop transfer cycles, shared device infrastructure, "
+                            "and benign controls in synthetic fraud demonstration graph."
+                        ),
+                    ),
+                )
+            # Once fraud investigation is executed, finish with complete evidence summary
+            return LLMDecision(
+                action="finish",
+                finish_summary=(
+                    "Synthetic fraud pattern investigation, multi-hop cycle detection, "
+                    "and benign control audit completed."
+                ),
+            )
+
+        # ======================================================================
+        # 2. SPECIALIZED WORKFLOW: SECURITY TRIAGE (OSV)
+        # ======================================================================
+        is_security = mode == "security_triage" or any(
+            w in q_lower
+            for w in ["security", "vulnerability", "cve", "triage", "compromise", "advisory", "audit", "osv"]
+        )
+        if is_security:
+            if "nexusact_security_triage" not in called_tools:
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_security_triage",
                         arguments={"repository_id": repo_id or "repo:local_nexusact"},
-                        reasoning="Inspect source capabilities and provenance records for repository.",
+                        reasoning=(
+                            "Triage declared repository dependencies against public OSV vulnerability records "
+                            "and map internal module reachability."
+                        ),
                     ),
                 )
+            # If vulnerabilities found have affected internal modules, trace their reachability impact
             if (
-                "pagerank" in q_lower or "central" in q_lower or "important" in q_lower
-            ) and "nexusact_page_rank" not in called_tools:
-                return LLMDecision(
-                    action="call_tool",
-                    tool_call=LLMToolCall(
-                        tool_name="nexusact_page_rank",
-                        arguments={"limit": 10},
-                        reasoning="Evaluate architectural centrality across the dependency network.",
-                    ),
-                )
-            return LLMDecision(action="finish", finish_summary="Repository-level analysis complete.")
+                security_triage_data
+                and security_triage_data.vulnerabilities_found
+                and "nexusact_trace_impact" not in called_tools
+            ):
+                for v in security_triage_data.vulnerabilities_found:
+                    if v.affected_modules:
+                        aff_target = v.affected_modules[0]
+                        return LLMDecision(
+                            action="call_tool",
+                            tool_call=LLMToolCall(
+                                tool_name="nexusact_trace_impact",
+                                arguments={"module_identifier": aff_target, "max_depth": 3},
+                                reasoning=(
+                                    f"Trace reachability blast radius for internal module '{aff_target}' "
+                                    f"affected by vulnerable dependency '{v.package_name}'."
+                                ),
+                            ),
+                        )
+            return LLMDecision(
+                action="finish",
+                finish_summary=(
+                    "Security vulnerability triage, internal module reachability, and remediation analysis completed."
+                ),
+            )
 
-        # Check for multi-entity path query (e.g. "How does A connect to B?" or "path from A to B")
+        # ======================================================================
+        # 3. CODEBASE WALKTHROUGH & ARCHITECTURAL INVESTIGATION
+        # ======================================================================
+        # A. Multi-hop Path / Flow Query (e.g. "How does an API request reach the graph storage layer?")
         import re
+
+        is_path_query = any(
+            w in q_lower for w in ["path", "flow", "connect", "reach", "between", "from", "to", "route", "pipeline"]
+        )
 
         path_match = re.search(
             r"(?:between|from)\s+([`'\"]?[\w\.\/\-]+[`'\"]?)\s+(?:and|to)\s+([`'\"]?[\w\.\/\-]+[`'\"]?)",
@@ -787,47 +827,78 @@ class AdaptiveInvestigationAgent:
                 re.IGNORECASE,
             )
 
-        if path_match and "nexusact_shortest_path" not in called_tools:
-            src_raw = path_match.group(1).strip("`'\" ")
-            dst_raw = path_match.group(2).strip("`'\" ")
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_shortest_path",
-                    arguments={"source_identifier": src_raw, "target_identifier": dst_raw},
-                    reasoning=f"Trace path and multi-hop connections from {src_raw} to {dst_raw}.",
-                ),
-            )
+        if is_path_query and "nexusact_shortest_path" not in called_tools:
+            if path_match:
+                src_raw = path_match.group(1).strip("`'\" ")
+                dst_raw = path_match.group(2).strip("`'\" ")
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_shortest_path",
+                        arguments={"source_identifier": src_raw, "target_identifier": dst_raw},
+                        reasoning=f"Trace topological path and multi-hop connections from {src_raw} to {dst_raw}.",
+                    ),
+                )
+            elif "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower):
+                # Well-known architectural traversal: API endpoints -> graph storage
+                src_cand = "backend.app.api.endpoints.investigation"
+                dst_cand = "backend.app.graph.client"
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_shortest_path",
+                        arguments={"source_identifier": src_cand, "target_identifier": dst_cand},
+                        reasoning="Trace end-to-end path from API request handler to graph storage client.",
+                    ),
+                )
+            elif target_id:
+                # If path query with single target, inspect its 1-hop and 2-hop structural neighborhood
+                if "nexusact_graph_neighborhood" not in called_tools:
+                    return LLMDecision(
+                        action="call_tool",
+                        tool_call=LLMToolCall(
+                            tool_name="nexusact_graph_neighborhood",
+                            arguments={"module_identifier": target_id, "limit": 20},
+                            reasoning="Inspect incoming callers and outgoing callees defining connection paths.",
+                        ),
+                    )
 
-        # If question was specifically about path and path was executed, finish
-        if (
-            "nexusact_shortest_path" in called_tools
-            and any(w in q_lower for w in ["path", "connect", "between"])
-            and not any(w in q_lower for w in ["break", "impact", "refactor"])
+        if "nexusact_shortest_path" in called_tools and not any(
+            w in q_lower for w in ["break", "impact", "affect", "modify", "remove", "refactor"]
         ):
             return LLMDecision(
                 action="finish",
-                finish_summary="Shortest path exploration and multi-hop verification completed.",
+                finish_summary="Shortest path exploration and multi-hop relationship verification completed.",
             )
 
-        # Target-specific adaptive tool choices
+        # B. Centrality / PageRank Architecture Query
         if (
-            "neighbor" in q_lower or "adjacent" in q_lower or "1-hop" in q_lower
-        ) and "nexusact_graph_neighborhood" not in called_tools:
+            any(w in q_lower for w in ["pagerank", "central", "important", "critical", "backbone", "ranking"])
+            and "nexusact_page_rank" not in called_tools
+        ):
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
-                    tool_name="nexusact_graph_neighborhood",
-                    arguments={"module_identifier": target_id, "limit": 20},
-                    reasoning="Inspect immediate 1-hop incoming and outgoing dependency connections.",
+                    tool_name="nexusact_page_rank",
+                    arguments={"limit": 10},
+                    reasoning=(
+                        "Evaluate architectural centrality and identify critical dependency hubs across the codebase."
+                    ),
                 ),
             )
-
-        # Question exclusively about contributors/reviewers
-        if (
-            any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"])
-            and "nexusact_who_knows" not in called_tools
+        if "nexusact_page_rank" in called_tools and not any(
+            w in q_lower for w in ["break", "impact", "affect", "modify", "remove"]
         ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="PageRank centrality analysis and critical dependency hub evaluation complete.",
+            )
+
+        # C. Contributor / Reviewer / Code Ownership Query
+        is_ownership_query = any(
+            w in q_lower for w in ["who", "author", "review", "contributor", "experience", "owner", "ownership"]
+        )
+        if is_ownership_query and "nexusact_who_knows" not in called_tools and target_id:
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
@@ -836,48 +907,17 @@ class AdaptiveInvestigationAgent:
                     reasoning="Identify experienced contributors, commit authors, and designated code reviewers.",
                 ),
             )
-
-        # If question was solely about reviewers and who_knows has run, finish without unnecessary simulation
-        if (
-            "nexusact_who_knows" in called_tools
-            and any(w in q_lower for w in ["who", "author", "review", "contributor", "experience"])
-            and not any(w in q_lower for w in ["break", "impact", "affect", "refactor", "modify", "remove", "risk"])
+        if "nexusact_who_knows" in called_tools and not any(
+            w in q_lower for w in ["break", "impact", "affect", "refactor", "modify", "remove", "risk"]
         ):
             return LLMDecision(
                 action="finish",
                 finish_summary="Reviewer and contributor ownership evidence analysis complete.",
             )
 
-        # Centrality / PageRank query
+        # D. Source Metadata / Provenance Query
         if (
-            any(w in q_lower for w in ["pagerank", "central", "important", "critical"])
-            and "nexusact_page_rank" not in called_tools
-        ):
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_page_rank",
-                    arguments={"limit": 10},
-                    reasoning="Evaluate architectural centrality across the dependency network.",
-                ),
-            )
-
-        # Simulation / Blast radius query
-        if (
-            any(w in q_lower for w in ["remove", "simulate", "blast radius", "counterfactual"])
-            and "nexusact_simulate_remove_module" not in called_tools
-        ):
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_simulate_remove_module",
-                    arguments={"module_identifier": target_id},
-                    reasoning="Simulate removal in an isolated graph clone to observe topological blast radius.",
-                ),
-            )
-
-        if (
-            any(w in q_lower for w in ["source", "metadata", "gap", "provenance"])
+            any(w in q_lower for w in ["source", "metadata", "provenance", "gap", "capabilities"])
             and "nexusact_source_metadata" not in called_tools
         ):
             return LLMDecision(
@@ -885,82 +925,130 @@ class AdaptiveInvestigationAgent:
                 tool_call=LLMToolCall(
                     tool_name="nexusact_source_metadata",
                     arguments={"repository_id": repo_id or "repo:local_nexusact"},
-                    reasoning="Inspect source capabilities and provenance records for repository.",
+                    reasoning="Inspect repository source capabilities, freshness records, and known modeling gaps.",
                 ),
             )
+        if "nexusact_source_metadata" in called_tools and not any(
+            w in q_lower for w in ["break", "impact", "modify", "affect"]
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Source capabilities and provenance inspection complete.",
+            )
 
-        # Security Triage Workflow
-        if any(w in q_lower for w in ["security", "vulnerability", "cve", "triage", "compromise"]):
+        # E. Immediate Callers / Callees / Neighborhood / Wiring Query
+        if (
+            any(
+                w in q_lower
+                for w in [
+                    "neighbor",
+                    "caller",
+                    "callee",
+                    "entry",
+                    "wire",
+                    "adjacent",
+                    "1-hop",
+                    "dependency",
+                    "dependents",
+                ]
+            )
+            and "nexusact_graph_neighborhood" not in called_tools
+            and target_id
+        ):
+            return LLMDecision(
+                action="call_tool",
+                tool_call=LLMToolCall(
+                    tool_name="nexusact_graph_neighborhood",
+                    arguments={"module_identifier": target_id, "limit": 20},
+                    reasoning="Inspect immediate 1-hop incoming callers and outgoing callee dependencies.",
+                ),
+            )
+        if "nexusact_graph_neighborhood" in called_tools and not any(
+            w in q_lower for w in ["break", "impact", "modify", "affect", "remove", "simulate"]
+        ):
+            return LLMDecision(
+                action="finish",
+                finish_summary="Immediate neighborhood caller/callee inspection complete.",
+            )
+
+        # F. Change Impact / Modification / Refactoring / Simulation Query
+        is_change_query = any(
+            w in q_lower
+            for w in [
+                "modify",
+                "change",
+                "affect",
+                "impact",
+                "break",
+                "refactor",
+                "remove",
+                "blast radius",
+                "simulation",
+            ]
+        )
+
+        if is_change_query and target_id:
+            # Step 1: Trace reverse impact
             if "nexusact_trace_impact" not in called_tools:
                 return LLMDecision(
                     action="call_tool",
                     tool_call=LLMToolCall(
                         tool_name="nexusact_trace_impact",
                         arguments={"module_identifier": target_id, "max_depth": 4},
-                        reasoning="[Security Triage] Trace upstream modules exposed to this component.",
+                        reasoning=(
+                            "Identify upstream dependent modules that rely directly or indirectly on this target."
+                        ),
                     ),
                 )
-            if "nexusact_who_knows" not in called_tools:
-                return LLMDecision(
-                    action="call_tool",
-                    tool_call=LLMToolCall(
-                        tool_name="nexusact_who_knows",
-                        arguments={"module_identifier": target_id, "limit": 5},
-                        reasoning="[Security Triage] Identify code owners and security contacts to alert.",
-                    ),
-                )
-            if "nexusact_simulate_remove_module" not in called_tools:
+            # Step 2: Simulation if question asks for removal, simulation, blast radius, or failure
+            if (
+                any(w in q_lower for w in ["remove", "simulate", "blast radius", "counterfactual", "break", "fail"])
+                and "nexusact_simulate_remove_module" not in called_tools
+            ):
                 return LLMDecision(
                     action="call_tool",
                     tool_call=LLMToolCall(
                         tool_name="nexusact_simulate_remove_module",
                         arguments={"module_identifier": target_id},
-                        reasoning="[Security Triage] Simulate isolating this module to assess mitigation impact.",
+                        reasoning="Simulate removal in an isolated graph clone to observe topological path disruption.",
+                    ),
+                )
+            # Step 3: Who to alert if requested
+            if (
+                any(w in q_lower for w in ["who", "alert", "review", "owner"])
+                and "nexusact_who_knows" not in called_tools
+            ):
+                affected = [m.module_id for m in impact_data.impacted_modules[:5]] if impact_data else []
+                return LLMDecision(
+                    action="call_tool",
+                    tool_call=LLMToolCall(
+                        tool_name="nexusact_who_knows",
+                        arguments={"module_identifier": target_id, "affected_modules": affected, "limit": 5},
+                        reasoning="Identify experienced code owners for impacted components.",
                     ),
                 )
             return LLMDecision(
                 action="finish",
-                finish_summary="Security triage complete: mapped exposure, code owners, and blast radius.",
+                finish_summary="Change impact and dependency blast radius investigation completed.",
             )
 
-        # Standard evidence chain for impact / modification / refactoring questions:
-        # Step 1: Trace reverse impact
-        if "nexusact_trace_impact" not in called_tools:
+        # G. General explanation of target module (e.g. "Explain module X" or "What does module X do?")
+        if target_id and "nexusact_graph_neighborhood" not in called_tools:
             return LLMDecision(
                 action="call_tool",
                 tool_call=LLMToolCall(
-                    tool_name="nexusact_trace_impact",
-                    arguments={"module_identifier": target_id, "max_depth": 4},
-                    reasoning="Identify upstream dependent modules that rely directly or indirectly on this target.",
+                    tool_name="nexusact_graph_neighborhood",
+                    arguments={"module_identifier": target_id, "limit": 20},
+                    reasoning=(
+                        f"Inspect callers and callees for target module '{target_id}' to explain its structural role."
+                    ),
                 ),
             )
 
-        # Step 2: Reviewers
-        if "nexusact_who_knows" not in called_tools:
-            affected = [m.module_id for m in impact_data.impacted_modules[:5]] if impact_data else []
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_who_knows",
-                    arguments={"module_identifier": target_id, "affected_modules": affected, "limit": 5},
-                    reasoning="Identify experienced contributors and code owners for affected components.",
-                ),
-            )
-
-        # Step 3: Simulation if impact found
-        if "nexusact_simulate_remove_module" not in called_tools and impact_data:
-            return LLMDecision(
-                action="call_tool",
-                tool_call=LLMToolCall(
-                    tool_name="nexusact_simulate_remove_module",
-                    arguments={"module_identifier": target_id},
-                    reasoning="Simulate removal in an isolated graph clone to observe topological blast radius.",
-                ),
-            )
-
+        # Repository-level default finish
         return LLMDecision(
             action="finish",
-            finish_summary="Evidence-backed graph investigation concluded.",
+            finish_summary="Investigation concluded based on available graph evidence.",
         )
 
     def _generate_verified_action_proposal(
