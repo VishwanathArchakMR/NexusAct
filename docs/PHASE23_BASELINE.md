@@ -65,9 +65,7 @@
      top_commits = candidates[0].get("commits_count", 0) if candidates else 0
      total_authors = len(candidates)
      ...
-     next_step = (
-         "Include the top-ranked contributors as required reviewers on any pull request touching this component."
-     )
+     next_step = "Include the top-ranked contributors as required reviewers on any pull request touching this component."
      ```
      It unconditionally advised assigning top-ranked contributors even when `total_authors == 0`.
 - **Required Resolution**:
