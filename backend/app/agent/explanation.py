@@ -137,67 +137,166 @@ def generate_fallback_explanation(req: PanelExplanationRequest) -> PanelExplanat
         next_step = "Click on any symbol to jump to its line range or click 'Trace Dependencies' to run an impact test."
 
     elif panel == "simulation":
-        baseline = data.get("baseline_paths", 0)
-        surviving = data.get("surviving_paths", 0)
-        disrupted = data.get("disrupted_paths", 0)
-        blast_radius = data.get("blast_radius", 0.0)
-        blast_pct = int(blast_radius * 100) if isinstance(blast_radius, (int, float)) else 0
-        summary = (
-            f"Counterfactual removal of '{target}' disrupted {disrupted} of {baseline} dependency paths "
-            f"({blast_pct}% blast radius)."
+        has_run = bool(
+            data.get("has_run")
+            or (
+                data.get("target_module_id")
+                and (
+                    data.get("disappeared_paths_count", 0) > 0
+                    or data.get("baseline_paths", 0) > 0
+                    or data.get("surviving_modules_count", 0) > 0
+                )
+            )
         )
-        what_looking = (
-            "Isolated Counterfactual Scenario Simulation executed via FalkorDB GRAPH.COPY. "
-            "Evaluates architectural fragility by temporarily excising the target."
-        )
-        what_found = (
-            f"Of {baseline} baseline dependency paths traversing the target, {disrupted} were broken and "
-            f"{surviving} survived via alternative paths."
-        )
-        coupling_str = "high architectural coupling" if blast_pct > 30 else "localized impact"
-        why_matters = (
-            f"A {blast_pct}% blast radius indicates {coupling_str}. Broken paths represent services that "
-            "will fail if the target interface changes incompatibly."
-        )
-        evidence = [
-            "FalkorDB GRAPH.COPY isolated scenario clone",
-            f"Excised target node: {target}",
-            f"Disrupted paths count: {disrupted} / {baseline}",
-        ]
-        conf = (
-            "Topological reachability simulation based on static import graph. Runtime fault tolerance not simulated."
-        )
-        next_step = "Notify affected callers and verify whether alternative surviving paths can be strengthened."
+        sim_target = data.get("target_module_id") or req.target_id
+        if sim_target:
+            target = sim_target
+        if not has_run or not sim_target:
+            summary = "No counterfactual simulation executed yet for this source snapshot."
+            what_looking = (
+                "Isolated Counterfactual Scenario Simulation executed via FalkorDB graph cloning. "
+                "Allows selecting any module to evaluate architectural fragility and blast radius "
+                "before making code changes."
+            )
+            what_found = (
+                "Awaiting simulation request. Select an existing module from the dropdown below and click "
+                "'Run Counterfactual Simulation' to clone the active graph and measure broken vs. surviving routes."
+            )
+            why_matters = (
+                "Proactively simulating the removal or deprecation of a module prevents silent dependency failures and "
+                "reveals single points of failure without mutating production data."
+            )
+            evidence = [
+                "FalkorDB isolated scenario execution ready",
+                f"Active source graph: {req.repo_id or 'selected repository'}",
+            ]
+            conf = (
+                "Deterministic topological simulation ready. Will execute in an isolated graph without "
+                "modifying primary source data."
+            )
+            next_step = "Choose a candidate module from the active repository and execute a counterfactual simulation."
+        else:
+            baseline = data.get("baseline_paths") or data.get("baseline_paths_count") or 0
+            surviving = data.get("surviving_paths") or data.get("surviving_paths_count") or 0
+            disrupted = data.get("disrupted_paths") or data.get("disappeared_paths_count") or 0
+            blast_radius = data.get("blast_radius", 0.0)
+            blast_pct = int(blast_radius * 100) if isinstance(blast_radius, (int, float)) else 0
+
+            what_looking = (
+                "Isolated Counterfactual Scenario Simulation executed via FalkorDB graph cloning. "
+                "Evaluates architectural fragility by temporarily excising the target."
+            )
+            if baseline == 0:
+                summary = (
+                    f"Counterfactual removal of '{target}' measured 0% blast radius; "
+                    "target has 0 upstream callers in this snapshot."
+                )
+                what_found = (
+                    f"The module '{target}' has no upstream modules depending on it. Excising it breaks 0 paths."
+                )
+                why_matters = (
+                    "Leaf modules or entrypoint routers have zero upstream callers, resulting in zero "
+                    "architectural blast radius on other components."
+                )
+                next_step = (
+                    "Select an intermediate core service or database client module to observe "
+                    "non-zero counterfactual impact."
+                )
+            else:
+                summary = (
+                    f"Counterfactual removal of '{target}' disrupted {disrupted} of {baseline} dependency paths "
+                    f"({blast_pct}% blast radius)."
+                )
+                what_found = (
+                    f"Of {baseline} baseline dependency paths traversing the target, {disrupted} were broken and "
+                    f"{surviving} survived via alternative paths."
+                )
+                coupling_str = "high architectural coupling" if blast_pct > 30 else "localized impact"
+                why_matters = (
+                    f"A {blast_pct}% blast radius indicates {coupling_str}. Broken paths represent services that "
+                    "will fail if the target interface changes incompatibly."
+                )
+                next_step = (
+                    "Notify affected callers and verify whether alternative surviving paths can be strengthened."
+                )
+
+            evidence = [
+                "FalkorDB isolated scenario clone",
+                f"Excised target node: {target}",
+                f"Disrupted paths count: {disrupted} / {baseline}",
+            ]
+            conf = (
+                "Topological reachability simulation based on static import graph. "
+                "Runtime fault tolerance not simulated."
+            )
 
     elif panel == "reviewers":
         candidates = data.get("candidates", [])
-        top_name = candidates[0].get("name", "N/A") if candidates else "Unknown"
-        top_commits = candidates[0].get("commits_count", 0) if candidates else 0
-        total_authors = len(candidates)
-        summary = (
-            f"Identified {total_authors} contributor(s) with historical expertise on '{target}' and its callers; "
-            f"lead author is {top_name} ({top_commits} commits)."
-        )
-        what_looking = (
-            "Reviewer & Contributor Expertise Ranking computed by traversing Git commit history "
-            "(`AUTHORED` -> `TOUCHES` -> `File` <- `Module`)."
-        )
-        what_found = (
-            f"Ranked {total_authors} developers based on recent commits touching files in the affected "
-            "dependency blast radius."
-        )
-        why_matters = (
-            "Ensures code reviews and architectural change proposals are routed to engineers with proven context "
-            "rather than arbitrary team members."
-        )
-        evidence = [
-            f"Git commit log traversal across {target} and connected modules",
-            f"Lead contributor: {top_name} with {top_commits} commits",
-        ]
-        conf = "Scoring is based on historical commit frequency and recency. Does not account for reassignments."
-        next_step = (
-            "Include the top-ranked contributors as required reviewers on any pull request touching this component."
-        )
+        total_repo_authors = data.get("total_repo_authors", 0)
+        has_explicit_reviews = data.get("has_explicit_reviews", False)
+        target_display = target if target else "selected repository"
+
+        if not candidates:
+            if total_repo_authors > 0:
+                summary = (
+                    f"No direct contributors found for files in '{target_display}'. "
+                    f"Repository history contains {total_repo_authors} total recorded author(s)."
+                )
+                what_found = (
+                    f"The module '{target_display}' has no commit touch history linked to its specific files, "
+                    f"though {total_repo_authors} author(s) are recorded in the overall repository commit log."
+                )
+                why_matters = (
+                    "Code ownership must be grounded in direct commit touches; unverified guesses are strictly avoided."
+                )
+                next_step = "Select another module or inspect repository-wide contributors to identify domain experts."
+            else:
+                summary = f"No Git commit history or author records available for {target_display}."
+                what_found = (
+                    "This source snapshot does not contain Git commit records or contributor links in FalkorDB."
+                )
+                why_matters = (
+                    "Reviewer ranking requires real commit author history "
+                    "(`(:Person)-[:AUTHORED]->(:Commit)-[:TOUCHES]->(:File)`)."
+                )
+                next_step = (
+                    "Ensure the repository was ingested with Git commit history enabled to view author expertise."
+                )
+            what_looking = "Reviewer & Contributor Expertise Ranking computed by traversing Git commit history."
+            evidence = ["Graph commit log traversal completed with zero matching touch records"]
+            conf = "Truthful disclosure: no author recommendations are fabricated when Git history is absent."
+        else:
+            top_name = candidates[0].get("name", "N/A")
+            top_commits = candidates[0].get("commits_count", 0)
+            total_authors = len(candidates)
+            review_label = "peer review records" if has_explicit_reviews else "code authorship touch history"
+            summary = (
+                f"Identified {total_authors} contributor(s) with historical expertise on '{target_display}'; "
+                f"lead author is {top_name} ({top_commits} commits)."
+            )
+            what_looking = (
+                f"Reviewer & Contributor Expertise Ranking computed from {review_label} "
+                "(`AUTHORED` -> `TOUCHES` -> `File` <- `Module`)."
+            )
+            what_found = (
+                f"Ranked {total_authors} developers based on commits touching files in the affected "
+                "dependency blast radius."
+            )
+            why_matters = (
+                "Ensures code reviews and architectural change proposals are routed to engineers with proven context "
+                "rather than arbitrary team members."
+            )
+            evidence = [
+                f"Git commit log traversal across {target_display} and connected modules",
+                f"Lead contributor: {top_name} with {top_commits} commits",
+            ]
+            conf = (
+                "Scoring is based on historical commit frequency and recency. "
+                "Does not account for organizational reassignments."
+            )
+            next_step = (
+                f"Route pull requests touching '{target_display}' to {top_name} for domain-grounded peer review."
+            )
 
     elif panel == "trace":
         steps = data.get("steps", [])

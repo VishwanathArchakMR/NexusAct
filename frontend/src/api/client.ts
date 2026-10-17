@@ -15,6 +15,12 @@ import type {
   WhoKnowsOutput,
   PageRankOutput,
   SimulationResult,
+  SimulationCandidatesResponse,
+  SimulateModulePayload,
+  SimulationEndpointResponse,
+  ReviewersQueryResponse,
+  ChatInvestigationRequest,
+  ChatInvestigationResponse,
   RepositoryRecord,
   SourceMetadataOutput,
   SourceSnapshot,
@@ -538,6 +544,61 @@ export async function fetchFinancialSubgraph(
     res,
     "Failed to load financial transaction subgraph"
   );
+}
+
+// ── Phase 23: Simulation, Reviewers & Authors, and AI Chat Assistant ──────────
+
+export async function fetchSimulationCandidates(
+  repoId?: string,
+  graphName?: string,
+  limit = 40
+): Promise<SimulationCandidatesResponse> {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (repoId) params.append("repo_id", repoId);
+  if (graphName) params.append("graph_name", graphName);
+  const url = `${config.apiBaseUrl}/api/v1/investigation/simulation-candidates?${params.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<SimulationCandidatesResponse>(res, "Failed to fetch candidate modules for simulation");
+}
+
+export async function runScenarioSimulation(
+  payload: SimulateModulePayload
+): Promise<SimulationEndpointResponse> {
+  const url = `${config.apiBaseUrl}/api/v1/investigation/simulate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<SimulationEndpointResponse>(res, "Counterfactual simulation execution failed");
+}
+
+export async function fetchReviewersAndAuthors(
+  repoId?: string,
+  targetModuleId?: string,
+  commitSha?: string,
+  graphName?: string
+): Promise<ReviewersQueryResponse> {
+  const params = new URLSearchParams();
+  if (repoId) params.append("repo_id", repoId);
+  if (targetModuleId) params.append("target_module_id", targetModuleId);
+  if (commitSha) params.append("commit_sha", commitSha);
+  if (graphName) params.append("graph_name", graphName);
+  const url = `${config.apiBaseUrl}/api/v1/investigation/reviewers?${params.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<ReviewersQueryResponse>(res, "Failed to fetch reviewer and author rankings");
+}
+
+export async function sendInvestigationChat(
+  req: ChatInvestigationRequest
+): Promise<ChatInvestigationResponse> {
+  const url = `${config.apiBaseUrl}/api/v1/investigation/chat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return handleResponse<ChatInvestigationResponse>(res, "Graph chat assistant request failed");
 }
 
 

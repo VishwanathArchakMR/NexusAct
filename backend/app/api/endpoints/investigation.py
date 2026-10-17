@@ -6,6 +6,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from backend.app.agent.chat import (
+    ChatInvestigationRequest,
+    ChatInvestigationResponse,
+    GraphChatService,
+)
 from backend.app.agent.explanation import (
     PanelExplanationRequest,
     PanelExplanationResponse,
@@ -421,3 +426,347 @@ def get_recent_investigations(
         investigations=selected_items,
         total=len(selected_items),
     )
+
+
+# ── Phase 23: Simulation, Reviewers, and Chat Assistant Endpoints ─────────────
+
+
+class SimulationCandidate(BaseModel):
+    id: str
+    name: str
+    path: str
+    in_degree: int
+    out_degree: int
+    is_entrypoint: bool = False
+
+
+class SimulationCandidatesResponse(BaseModel):
+    repo_id: str
+    graph_name: str
+    candidates: List[SimulationCandidate] = Field(default_factory=list)
+    total: int
+
+
+class SimulateModulePayload(BaseModel):
+    repo_id: Optional[str] = None
+    target_module_id: str
+    graph_name: Optional[str] = None
+    commit_sha: Optional[str] = None
+
+
+class SimulationEndpointResponse(BaseModel):
+    simulation: SimulationResult
+    explanation: PanelExplanationResponse
+
+
+class ReviewerResponseItem(BaseModel):
+    person_id: str
+    name: str
+    email: str
+    commits_count: int
+    files_touched_count: int
+    composite_score: float
+    rank: int
+    rationale: str
+    is_lead: bool = False
+    last_touch_date: Optional[str] = None
+    touched_files: List[str] = Field(default_factory=list)
+    relevant_commits: List[str] = Field(default_factory=list)
+
+
+class ReviewersQueryResponse(BaseModel):
+    repo_id: str
+    graph_name: str
+    target_module_id: Optional[str] = None
+    candidates: List[ReviewerResponseItem] = Field(default_factory=list)
+    total_repo_authors: int = 0
+    has_explicit_reviews: bool = False
+    scoring_formula: str = "composite_score = 0.40 * files_touched + 0.30 * recency + 0.20 * ownership + 0.10 * reviews"
+    explanation: PanelExplanationResponse
+
+
+def _resolve_repo_and_graph(repo_id: Optional[str], graph_name: Optional[str]) -> tuple[str, str]:
+    """Resolves repo_id and graph_name from registry with safe defaults."""
+    resolved_repo = repo_id or "repo:local_nexusact"
+    rec = repo_registry.get_repository(resolved_repo)
+    if rec and rec.graph_name:
+        return resolved_repo, rec.graph_name
+    if graph_name:
+        return resolved_repo, graph_name
+    return resolved_repo, "nexusact_main"
+
+
+@router.get(
+    "/investigation/simulation-candidates",
+    response_model=SimulationCandidatesResponse,
+    summary="Get candidate modules in active graph available for counterfactual simulation",
+)
+@router.get(
+    "/simulation-candidates",
+    response_model=SimulationCandidatesResponse,
+    include_in_schema=False,
+)
+def get_simulation_candidates(
+    repo_id: Optional[str] = Query(default=None),
+    graph_name: Optional[str] = Query(default=None),
+    limit: int = Query(default=40, ge=1, le=100),
+) -> SimulationCandidatesResponse:
+    """Queries candidate modules from FalkorDB with in-degree and out-degree connectivity metrics."""
+    resolved_repo, target_graph = _resolve_repo_and_graph(repo_id, graph_name)
+    candidates: List[SimulationCandidate] = []
+
+    cypher = """
+    MATCH (m:Module)
+    OPTIONAL MATCH (caller:Module)-[:DEPENDS_ON]->(m)
+    OPTIONAL MATCH (m)-[:DEPENDS_ON]->(dep:Module)
+    RETURN m.id AS id, m.name AS name, m.path AS path,
+           count(DISTINCT caller) AS in_degree,
+           count(DISTINCT dep) AS out_degree
+    ORDER BY in_degree DESC, out_degree DESC
+    LIMIT $limit
+    """
+    try:
+        rows = graph_client.query(cypher, params={"limit": limit}, graph_name=target_graph)
+        for r in rows:
+            mid = str(r[0]) if r[0] else ""
+            mname = str(r[1]) if r[1] else mid
+            mpath = str(r[2]) if r[2] else ""
+            in_deg = int(r[3]) if r[3] is not None else 0
+            out_deg = int(r[4]) if r[4] is not None else 0
+
+            candidates.append(
+                SimulationCandidate(
+                    id=mid,
+                    name=mname,
+                    path=mpath,
+                    in_degree=in_deg,
+                    out_degree=out_deg,
+                    is_entrypoint=(in_deg == 0 and out_deg > 0),
+                )
+            )
+    except Exception as e:
+        logger.warning("Failed to fetch simulation candidates on graph %s: %s", target_graph, e)
+
+    return SimulationCandidatesResponse(
+        repo_id=resolved_repo,
+        graph_name=target_graph,
+        candidates=candidates,
+        total=len(candidates),
+    )
+
+
+@router.post(
+    "/investigation/simulate",
+    response_model=SimulationEndpointResponse,
+    summary="Execute real FalkorDB isolated graph counterfactual scenario simulation",
+)
+@router.post(
+    "/simulate",
+    response_model=SimulationEndpointResponse,
+    include_in_schema=False,
+)
+async def run_scenario_simulation(payload: SimulateModulePayload) -> SimulationEndpointResponse:
+    """Executes counterfactual removal of target module in an isolated scenario graph clone."""
+    resolved_repo, target_graph = _resolve_repo_and_graph(payload.repo_id, payload.graph_name)
+
+    try:
+        sim_res = execute_simulate_remove_module(
+            SimulateRemoveModuleInput(
+                module_identifier=payload.target_module_id,
+                graph_name=target_graph,
+            )
+        )
+
+        sim_summary = {
+            "has_run": True,
+            "target_module_id": sim_res.target_module_name or sim_res.target_module_id,
+            "baseline_paths": sim_res.baseline_paths_count,
+            "disrupted_paths": sim_res.disappeared_paths_count,
+            "surviving_paths": sim_res.surviving_paths_count,
+            "blast_radius": sim_res.blast_radius_score,
+            "newly_isolated_modules": sim_res.newly_isolated_modules,
+        }
+
+        explanation = await generate_panel_explanation(
+            PanelExplanationRequest(
+                investigation_id=f"sim_{sim_res.scenario_id}",
+                panel_id="simulation",
+                question=f"What is the architectural blast radius of removing '{payload.target_module_id}'?",
+                target_id=sim_res.target_module_name or sim_res.target_module_id,
+                repo_id=resolved_repo,
+                commit_sha=payload.commit_sha,
+                data_summary=sim_summary,
+            )
+        )
+
+        return SimulationEndpointResponse(simulation=sim_res, explanation=explanation)
+    except Exception as e:
+        logger.error("Simulation failed for %s on %s: %s", payload.target_module_id, target_graph, e)
+        raise HTTPException(status_code=500, detail=f"Scenario simulation failed: {str(e)}")
+
+
+@router.get(
+    "/investigation/reviewers",
+    response_model=ReviewersQueryResponse,
+    summary="Query contributor and reviewer intelligence grounded in Git commit history",
+)
+@router.get(
+    "/reviewers",
+    response_model=ReviewersQueryResponse,
+    include_in_schema=False,
+)
+async def get_reviewers_and_authors(
+    repo_id: Optional[str] = Query(default=None),
+    target_module_id: Optional[str] = Query(default=None),
+    graph_name: Optional[str] = Query(default=None),
+    commit_sha: Optional[str] = Query(default=None),
+) -> ReviewersQueryResponse:
+    """Retrieves ranked authors and reviewers from real Git history graph edges."""
+    resolved_repo, target_graph = _resolve_repo_and_graph(repo_id, graph_name)
+    candidates: List[ReviewerResponseItem] = []
+    total_repo_authors = 0
+    has_explicit_reviews = False
+
+    # 1. Total authors across repository
+    try:
+        cnt_res = graph_client.query(
+            "MATCH (p:Person)-[:AUTHORED]->(:Commit) RETURN count(DISTINCT p) AS total",
+            graph_name=target_graph,
+        )
+        if cnt_res and len(cnt_res) > 0 and cnt_res[0][0]:
+            total_repo_authors = int(cnt_res[0][0])
+    except Exception as e:
+        logger.debug("Failed counting authors on %s: %s", target_graph, e)
+
+    # 2. Check for explicit REVIEWS edges
+    try:
+        rev_res = graph_client.query(
+            "MATCH ()-[r:REVIEWS]->() RETURN count(r) AS reviews_count",
+            graph_name=target_graph,
+        )
+        if rev_res and len(rev_res) > 0 and rev_res[0][0]:
+            has_explicit_reviews = int(rev_res[0][0]) > 0
+    except Exception as e:
+        logger.debug("Failed checking reviews edges on %s: %s", target_graph, e)
+
+    # 3. Retrieve candidates for target_module_id or repo-wide
+    if target_module_id:
+        try:
+            who_output = execute_who_knows(
+                WhoKnowsInput(
+                    module_identifier=target_module_id,
+                    graph_name=target_graph,
+                )
+            )
+            for idx, cand in enumerate(who_output.candidates):
+                candidates.append(
+                    ReviewerResponseItem(
+                        person_id=cand.person_id,
+                        name=cand.name,
+                        email=cand.email,
+                        commits_count=cand.breakdown.commits_count,
+                        files_touched_count=cand.breakdown.files_touched_count,
+                        composite_score=cand.composite_score,
+                        rank=cand.rank,
+                        rationale=cand.rationale,
+                        is_lead=(idx == 0),
+                    )
+                )
+        except Exception as e:
+            logger.debug("Targeted who_knows search yielded no direct matches for %s: %s", target_module_id, e)
+
+    # If no module candidates found or no target module provided, query top authors repo-wide
+    if not candidates and total_repo_authors > 0:
+        author_query = """
+        MATCH (p:Person)-[:AUTHORED]->(c:Commit)
+        OPTIONAL MATCH (c)-[:TOUCHES]->(f:File)
+        RETURN p.id AS person_id,
+               p.name AS name,
+               p.email AS email,
+               count(DISTINCT f.id) AS files_touched,
+               count(DISTINCT c.id) AS commit_count,
+               max(c.timestamp) AS last_commit_time
+        ORDER BY commit_count DESC, files_touched DESC
+        LIMIT 15
+        """
+        try:
+            rows = graph_client.query(author_query, graph_name=target_graph)
+            max_commits = max([int(r[4]) for r in rows if r[4]] or [1])
+            for idx, r in enumerate(rows):
+                pid = str(r[0]) if r[0] else f"person_{idx}"
+                name = str(r[1]) if r[1] else pid
+                email = str(r[2]) if r[2] else ""
+                files_cnt = int(r[3]) if r[3] is not None else 0
+                commit_cnt = int(r[4]) if r[4] is not None else 0
+                last_time = str(r[5]) if r[5] else None
+
+                # Compute normalized score
+                norm_score = round(min(1.0, commit_cnt / max_commits), 2)
+                candidates.append(
+                    ReviewerResponseItem(
+                        person_id=pid,
+                        name=name,
+                        email=email,
+                        commits_count=commit_cnt,
+                        files_touched_count=files_cnt,
+                        composite_score=norm_score,
+                        rank=idx + 1,
+                        rationale=(
+                            f"Repository contributor with {commit_cnt} recorded commits touching {files_cnt} files."
+                        ),
+                        is_lead=(idx == 0),
+                        last_touch_date=last_time,
+                    )
+                )
+        except Exception as e:
+            logger.warning("Repo-wide author query failed on %s: %s", target_graph, e)
+
+    # 4. Generate structured explanation
+    exp_data = {
+        "candidates": [c.model_dump() for c in candidates],
+        "total_repo_authors": total_repo_authors,
+        "has_explicit_reviews": has_explicit_reviews,
+        "target_module_id": target_module_id,
+    }
+    explanation = await generate_panel_explanation(
+        PanelExplanationRequest(
+            investigation_id=f"rev_{resolved_repo}_{target_module_id or 'all'}",
+            panel_id="reviewers",
+            question="Who are the qualified contributors and code reviewers?",
+            target_id=target_module_id,
+            repo_id=resolved_repo,
+            commit_sha=commit_sha,
+            data_summary=exp_data,
+        )
+    )
+
+    return ReviewersQueryResponse(
+        repo_id=resolved_repo,
+        graph_name=target_graph,
+        target_module_id=target_module_id,
+        candidates=candidates,
+        total_repo_authors=total_repo_authors,
+        has_explicit_reviews=has_explicit_reviews,
+        scoring_formula="composite_score = 0.40 * files_touched + 0.30 * recency + 0.20 * ownership + 0.10 * reviews",
+        explanation=explanation,
+    )
+
+
+@router.post(
+    "/investigation/chat",
+    response_model=ChatInvestigationResponse,
+    summary="Ask natural language questions answered via real FalkorDB Cypher execution and model reasoning",
+)
+@router.post(
+    "/chat",
+    response_model=ChatInvestigationResponse,
+    include_in_schema=False,
+)
+async def chat_investigation(payload: ChatInvestigationRequest) -> ChatInvestigationResponse:
+    """Answers engineering or dataset questions using graph schema discovery and read-only Cypher."""
+    try:
+        service = GraphChatService()
+        return await service.answer_question(payload)
+    except Exception as e:
+        logger.error("Chat investigation failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Graph Chat Assistant failed: {str(e)}")

@@ -7,6 +7,9 @@ import type {
   RepositoryRecord,
   SourceMetadataOutput,
   SourceSnapshot,
+  SimulationResult,
+  SimulationCandidate,
+  ReviewersQueryResponse,
 } from "../../types/investigation";
 import {
   fetchModules,
@@ -18,6 +21,9 @@ import {
   refreshRepository,
   fetchSourceMetadata,
   fetchRepositorySnapshot,
+  fetchSimulationCandidates,
+  runScenarioSimulation,
+  fetchReviewersAndAuthors,
 } from "../../api/client";
 
 import { GraphCanvas } from "./GraphCanvas";
@@ -28,6 +34,7 @@ import { IssueProposalCard } from "./IssueProposalCard";
 import { CodeInspector } from "./CodeInspector";
 import { PanelExplanation } from "./PanelExplanation";
 import { FraudInvestigationPanel } from "./FraudInvestigationPanel";
+import { ChatAssistantDrawer } from "./ChatAssistantDrawer";
 
 import {
   Sparkles,
@@ -52,6 +59,7 @@ import {
   FileCode,
   ChevronLeft,
   ChevronRight,
+  MessageSquareCode,
 } from "lucide-react";
 
 export type InvestigationWorkspaceTab =
@@ -124,6 +132,16 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   const [simulationView, setSimulationView] = useState<"baseline" | "scenario">("baseline");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [inspectorFilePath, setInspectorFilePath] = useState<string>("");
+
+  // Phase 23: Graph AI Assistant, Scenario Simulation & Reviewers Intelligence
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [simCandidates, setSimCandidates] = useState<SimulationCandidate[]>([]);
+  const [standaloneSim, setStandaloneSim] = useState<SimulationResult | null>(null);
+  const [isRunningSim, setIsRunningSim] = useState<boolean>(false);
+  const [selectedSimCandidate, setSelectedSimCandidate] = useState<string>("");
+  const [reviewersData, setReviewersData] = useState<ReviewersQueryResponse | null>(null);
+  const [isLoadingReviewers, setIsLoadingReviewers] = useState<boolean>(false);
+  const [reviewerFilterModule, setReviewerFilterModule] = useState<string>("");
 
   useEffect(() => {
     if (initialMode) {
@@ -333,9 +351,63 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   };
 
   const activeRepo = repositories.find((r) => r.id === selectedRepoId);
+  const currentGraphName = activeRepo?.graph_name || "nexusact_main";
+
+  // Phase 23: Merged counterfactual simulation (standalone run or report)
+  const effectiveSim = standaloneSim || report?.simulation_result || null;
+  const sim = effectiveSim;
+
+  // Fetch simulation candidates when entering simulation tab or repo changes
+  useEffect(() => {
+    if (activeTab === "simulation" && selectedRepoId) {
+      fetchSimulationCandidates(selectedRepoId, currentGraphName)
+        .then((res) => {
+          setSimCandidates(res.candidates || []);
+          if (res.candidates && res.candidates.length > 0) {
+            setSelectedSimCandidate((prev) => prev || res.candidates[0].id);
+          }
+        })
+        .catch((err) => console.warn("Failed to fetch simulation candidates:", err));
+    }
+  }, [activeTab, selectedRepoId, currentGraphName]);
+
+  // Fetch reviewers & authors when entering reviewers tab or repo/filter changes
+  useEffect(() => {
+    if (activeTab === "reviewers" && selectedRepoId) {
+      setIsLoadingReviewers(true);
+      fetchReviewersAndAuthors(
+        selectedRepoId,
+        reviewerFilterModule || undefined,
+        snapshot?.commit_sha,
+        currentGraphName
+      )
+        .then((res) => {
+          setReviewersData(res);
+        })
+        .catch((err) => console.warn("Failed to fetch reviewers:", err))
+        .finally(() => setIsLoadingReviewers(false));
+    }
+  }, [activeTab, selectedRepoId, reviewerFilterModule, snapshot?.commit_sha, currentGraphName]);
+
+  // Handler for running counterfactual simulation
+  const handleRunScenarioSimulation = async (targetId: string) => {
+    setIsRunningSim(true);
+    try {
+      const resp = await runScenarioSimulation({
+        repo_id: selectedRepoId,
+        target_module_id: targetId,
+        graph_name: currentGraphName,
+        commit_sha: snapshot?.commit_sha,
+      });
+      setStandaloneSim(resp.simulation);
+    } catch (err: any) {
+      console.error("Simulation failed:", err);
+    } finally {
+      setIsRunningSim(false);
+    }
+  };
 
   // Determine disrupted and surviving nodes/edges for counterfactual display
-  const sim = report?.simulation_result ?? null;
 
   const disappearedNodeIds: string[] =
     simulationView === "scenario" && sim
@@ -1784,6 +1856,48 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               </div>
             </button>
           </div>
+
+          {/* Group 5: Graph AI Chat Assistant Trigger */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", borderTop: "1px solid var(--border-subtle)", paddingTop: "0.5rem" }}>
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              title={isSidebarCollapsed ? "Toggle Graph AI Chat Assistant" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                width: "100%",
+                padding: isSidebarCollapsed ? "0.55rem 0.2rem" : "0.5rem 0.65rem",
+                borderRadius: "6px",
+                border: "1px solid rgba(37, 99, 235, 0.25)",
+                backgroundColor: isChatOpen ? "var(--accent-blue, #2563eb)" : "rgba(37, 99, 235, 0.08)",
+                color: isChatOpen ? "#ffffff" : "var(--accent-blue, #2563eb)",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+                fontWeight: 700,
+                transition: "all 0.15s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                <MessageSquareCode size={15} />
+                {!isSidebarCollapsed && <span>Graph AI Chat</span>}
+              </div>
+              {!isSidebarCollapsed && (
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "0.1rem 0.35rem",
+                    borderRadius: "4px",
+                    backgroundColor: isChatOpen ? "#ffffff" : "var(--accent-blue, #2563eb)",
+                    color: isChatOpen ? "var(--accent-blue, #2563eb)" : "#ffffff",
+                    fontWeight: 700,
+                  }}
+                >
+                  Live
+                </span>
+              )}
+            </button>
+          </div>
         </aside>
 
         {/* ── Main Workspace Panels Area ── */}
@@ -2024,20 +2138,28 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             panelId="simulation"
             investigationId={report?.investigation_id || `inv:simulation_${selectedRepoId}`}
             question={question}
-            targetId={selectedModule}
+            targetId={effectiveSim?.target_module_name || effectiveSim?.target_module_id || selectedSimCandidate || selectedModule}
             repoId={selectedRepoId}
             commitSha={snapshot?.commit_sha}
             dataSummary={{
-              target_module_id: sim?.target_module_id,
-              disappeared_paths_count: sim?.disappeared_paths_count || 0,
-              surviving_modules_count: sim?.surviving_modules_count || 0,
-              newly_isolated: sim?.newly_isolated_modules?.length || 0,
+              has_run: Boolean(effectiveSim),
+              target_module_id: effectiveSim?.target_module_name || effectiveSim?.target_module_id || selectedSimCandidate,
+              baseline_paths: effectiveSim?.baseline_paths_count ?? 0,
+              disrupted_paths: effectiveSim?.disappeared_paths_count ?? 0,
+              surviving_paths: effectiveSim?.surviving_paths_count ?? 0,
+              blast_radius: effectiveSim?.blast_radius_score ?? 0,
+              newly_isolated_modules: effectiveSim?.newly_isolated_modules || [],
             }}
           />
           <CounterfactualDiff
-            simulation={report?.simulation_result ?? null}
+            simulation={effectiveSim}
             activeView={simulationView}
             onToggleView={setSimulationView}
+            candidates={simCandidates}
+            selectedCandidateId={selectedSimCandidate}
+            onSelectCandidate={setSelectedSimCandidate}
+            onRunSimulation={handleRunScenarioSimulation}
+            isRunningSimulation={isRunningSim}
           />
         </div>
       )}
@@ -2048,16 +2170,40 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             panelId="reviewers"
             investigationId={report?.investigation_id || `inv:reviewers_${selectedRepoId}`}
             question={question}
-            targetId={selectedModule}
+            targetId={reviewerFilterModule || selectedModule}
             repoId={selectedRepoId}
             commitSha={snapshot?.commit_sha}
             dataSummary={{
-              candidates_count: report?.reviewer_result?.candidates?.length || 0,
-              top_candidate: report?.reviewer_result?.candidates?.[0]?.name,
-              target_id: selectedModule,
+              candidates: (reviewersData?.candidates || report?.reviewer_result?.candidates || []).map((c) => ({
+                name: c.name,
+                commits_count: (c as any).commits_count ?? (c as any).breakdown?.commits_count ?? 0,
+              })),
+              total_repo_authors: reviewersData?.total_repo_authors ?? (report?.reviewer_result?.candidates?.length || 0),
+              has_explicit_reviews: reviewersData?.has_explicit_reviews ?? false,
+              target_module_id: reviewerFilterModule || selectedModule,
             }}
           />
-          <ReviewerRankings data={report?.reviewer_result ?? null} />
+          <ReviewerRankings
+            data={report?.reviewer_result ?? null}
+            queryResponse={reviewersData}
+            isLoading={isLoadingReviewers}
+            onRefresh={() => {
+              if (selectedRepoId) {
+                setIsLoadingReviewers(true);
+                fetchReviewersAndAuthors(
+                  selectedRepoId,
+                  reviewerFilterModule || undefined,
+                  snapshot?.commit_sha,
+                  currentGraphName
+                )
+                  .then((res) => setReviewersData(res))
+                  .finally(() => setIsLoadingReviewers(false));
+              }
+            }}
+            selectedModule={reviewerFilterModule}
+            onSelectModule={setReviewerFilterModule}
+            availableModules={modules.map((m) => m.name || m.id)}
+          />
         </div>
       )}
 
@@ -2385,6 +2531,25 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       )}
         </main>
       </div>
+
+      {/* ── Phase 23: Graph-Grounded Right-Side AI Assistant Drawer ── */}
+      <ChatAssistantDrawer
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        repoId={selectedRepoId}
+        graphName={currentGraphName}
+        commitSha={snapshot?.commit_sha}
+        selectedEntityId={selectedModule}
+        onNavigateToTab={(tab, entityId) => {
+          if (entityId) {
+            setSelectedModule(entityId);
+            loadGraph(entityId, selectedRepoId);
+          }
+          if (tab) {
+            setActiveTab(tab as any);
+          }
+        }}
+      />
     </div>
   );
 };

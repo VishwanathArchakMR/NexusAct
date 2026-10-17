@@ -637,3 +637,109 @@ export interface FinancialInvestigationResult {
   limitations: string[];
   cypher_queries_executed: string[];
 }
+
+// ── Phase 23: Simulation, Reviewers, and AI Chat Assistant Types ──────────────
+
+export interface SimulationCandidate {
+  id: string;
+  name: string;
+  path: string;
+  in_degree: number;
+  out_degree: number;
+  is_entrypoint: boolean;
+}
+
+export interface SimulationCandidatesResponse {
+  repo_id: string;
+  graph_name: string;
+  candidates: SimulationCandidate[];
+  total: number;
+}
+
+export interface SimulateModulePayload {
+  repo_id?: string;
+  target_module_id: string;
+  graph_name?: string;
+  commit_sha?: string;
+}
+
+export interface SimulationEndpointResponse {
+  simulation: SimulationResult;
+  explanation: PanelExplanationResponse;
+}
+
+export interface ReviewerResponseItem {
+  person_id: string;
+  name: string;
+  email: string;
+  commits_count: number;
+  files_touched_count: number;
+  composite_score: number;
+  rank: number;
+  rationale: string;
+  is_lead: boolean;
+  last_touch_date?: string | null;
+  touched_files: string[];
+  relevant_commits: string[];
+}
+
+export interface ReviewersQueryResponse {
+  repo_id: string;
+  graph_name: string;
+  target_module_id?: string | null;
+  candidates: ReviewerResponseItem[];
+  total_repo_authors: number;
+  has_explicit_reviews: boolean;
+  scoring_formula: string;
+  explanation: PanelExplanationResponse;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp?: string;
+}
+
+export interface CypherExecutionTrace {
+  cypher_query: string;
+  parameters: Record<string, any>;
+  execution_time_ms: number;
+  rows_returned: number;
+  graph_name: string;
+  status: "success" | "error";
+  error_message?: string | null;
+}
+
+export interface EvidenceReference {
+  entity_type: string;
+  entity_id: string;
+  label: string;
+  panel_target?: string | null;
+  snippet?: string | null;
+}
+
+export interface ChatInvestigationRequest {
+  question: string;
+  repo_id?: string;
+  graph_name?: string;
+  conversation_id?: string;
+  history?: ChatMessage[];
+  target_entity_id?: string;
+  commit_sha?: string;
+}
+
+export interface ChatInvestigationResponse {
+  conversation_id: string;
+  repo_id: string;
+  graph_name: string;
+  commit_sha?: string | null;
+  answer: string;
+  reasoning_summary: string;
+  query_traces: CypherExecutionTrace[];
+  evidence_references: EvidenceReference[];
+  provider_status: "gemini" | "ollama" | "fallback" | "not_configured";
+  model_name?: string | null;
+  suggested_followups: string[];
+  limitations?: string | null;
+}
+

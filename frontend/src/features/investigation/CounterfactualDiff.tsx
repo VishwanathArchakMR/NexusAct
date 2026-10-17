@@ -1,259 +1,412 @@
 import React, { useState } from "react";
-import type { SimulationResult } from "../../types/investigation";
-import { GitFork, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import type { SimulationResult, SimulationCandidate } from "../../types/investigation";
+import { GitFork, AlertTriangle, CheckCircle2, Info, Play, Loader2 } from "lucide-react";
 
 interface CounterfactualDiffProps {
   simulation: SimulationResult | null;
   activeView: "baseline" | "scenario";
   onToggleView: (view: "baseline" | "scenario") => void;
+  candidates?: SimulationCandidate[];
+  selectedCandidateId?: string;
+  onSelectCandidate?: (moduleId: string) => void;
+  onRunSimulation?: (moduleId: string) => void;
+  isRunningSimulation?: boolean;
 }
 
 export const CounterfactualDiff: React.FC<CounterfactualDiffProps> = ({
   simulation,
   activeView,
   onToggleView,
+  candidates = [],
+  selectedCandidateId,
+  onSelectCandidate,
+  onRunSimulation,
+  isRunningSimulation = false,
 }) => {
   const [showSurviving, setShowSurviving] = useState(false);
+  const [localSelectedMod, setLocalSelectedMod] = useState<string>(
+    selectedCandidateId || (candidates.length > 0 ? candidates[0].id : "")
+  );
 
-  if (!simulation) {
-    return (
-      <div style={emptyStyle}>
-        <GitFork size={28} color="var(--border-strong)" style={{ marginBottom: "0.5rem" }} />
-        <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-          No counterfactual simulation executed yet.
-        </p>
-        <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-          Run <code>simulate_remove_module</code> to clone the graph and compare before/after paths.
-        </p>
-      </div>
-    );
-  }
+  const handleModuleChange = (newMod: string) => {
+    setLocalSelectedMod(newMod);
+    if (onSelectCandidate) {
+      onSelectCandidate(newMod);
+    }
+  };
 
-  const blastPct = ((simulation.blast_radius_score ?? 0) * 100).toFixed(1);
-  const disappearedPaths = simulation.disappeared_paths ?? [];
-  const survivingPaths = simulation.surviving_paths ?? [];
-  const isolatedModules = simulation.newly_isolated_modules ?? [];
-  const hasDisrupted = disappearedPaths.length > 0;
-  const hasSurviving = survivingPaths.length > 0;
+  const handleRun = () => {
+    const target = localSelectedMod || (candidates.length > 0 ? candidates[0].id : "");
+    if (target && onRunSimulation) {
+      onRunSimulation(target);
+    }
+  };
 
   return (
-    <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
-      {/* ── Header ── */}
-      <div style={headerStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <GitFork size={16} color="var(--accent-blue)" />
-          <h3 style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)" }}>
-            Counterfactual Simulation — Removed:{" "}
-            <code style={{ fontFamily: "var(--font-mono)", color: "#e11d48" }}>
-              {simulation.target_module_name}
-            </code>
-          </h3>
-          {simulation.is_incomplete && (
-            <span style={incompleteBadge}>⚠ Partial results (path limit reached)</span>
-          )}
-        </div>
-
-        {/* View Toggle */}
-        <div style={toggleContainerStyle}>
-          <button
-            onClick={() => onToggleView("baseline")}
-            style={toggleBtnStyle(activeView === "baseline", "blue")}
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+      {/* ── Candidate Target Selection Bar ── */}
+      <div
+        style={{
+          padding: "0.75rem 1rem",
+          backgroundColor: "var(--bg-card, #ffffff)",
+          borderRadius: "8px",
+          border: "1px solid var(--border-subtle, #e2e8f0)",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: "260px" }}>
+          <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-primary, #0f172a)", whiteSpace: "nowrap" }}>
+            Candidate Module:
+          </label>
+          <select
+            value={localSelectedMod}
+            onChange={(e) => handleModuleChange(e.target.value)}
+            disabled={isRunningSimulation || candidates.length === 0}
+            style={{
+              flex: 1,
+              padding: "0.4rem 0.6rem",
+              borderRadius: "6px",
+              border: "1px solid var(--border-subtle, #cbd5e1)",
+              backgroundColor: "#ffffff",
+              fontSize: "0.8rem",
+              color: "var(--text-primary, #0f172a)",
+              outline: "none",
+            }}
           >
-            Baseline
-          </button>
-          <button
-            onClick={() => onToggleView("scenario")}
-            style={toggleBtnStyle(activeView === "scenario", "red")}
-          >
-            Scenario (removed)
-          </button>
-        </div>
-      </div>
-
-      {/* ── Metrics Row ── */}
-      <div style={metricsGridStyle}>
-        <MetricCard
-          label="Baseline Paths"
-          value={simulation.baseline_paths_count}
-          color="var(--text-secondary)"
-          title="Total upstream dependency paths to target in unmodified graph"
-        />
-        <MetricCard
-          label="Broken Paths"
-          value={simulation.disappeared_paths_count}
-          color="#e11d48"
-          title="Paths from baseline that no longer reach any destination after target removal"
-        />
-        <MetricCard
-          label="Surviving Paths"
-          value={simulation.surviving_paths_count}
-          color="#16a34a"
-          title="Upstream paths that still reach a valid destination via an alternate route"
-        />
-        <MetricCard
-          label={`Blast Radius — ${blastPct}%`}
-          value={`${blastPct}%`}
-          color={simulation.blast_radius_score > 0.5 ? "#e11d48" : "#d97706"}
-          title="broken_paths / baseline_paths_count — fraction of known upstream paths disrupted. Does not imply runtime failure probability."
-        />
-        <MetricCard
-          label="Surviving Modules"
-          value={simulation.surviving_modules_count}
-          color="var(--text-primary)"
-          title="Total modules remaining in the scenario copy graph"
-        />
-        <MetricCard
-          label="Surviving Edges"
-          value={simulation.surviving_edges_count}
-          color="var(--text-primary)"
-          title="Total edges remaining in the scenario copy graph"
-        />
-      </div>
-
-      {/* ── Before/After Path Comparison ── */}
-      <div style={{ padding: "0.85rem 1rem" }}>
-
-        {/* Disrupted (Broken) Paths */}
-        <div style={{ marginBottom: "0.85rem" }}>
-          <h4 style={sectionHeadingStyle}>
-            <span style={{ color: "#e11d48" }}>✕</span>&nbsp;
-            Broken Paths ({disappearedPaths.length}
-            {(simulation.disappeared_paths_count ?? 0) > disappearedPaths.length
-              ? ` of ${simulation.disappeared_paths_count} shown`
-              : ""})
-            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 400, marginLeft: "0.5rem" }}>
-              — paths that routed through the removed module and no longer exist in the scenario graph
-            </span>
-          </h4>
-
-          {!hasDisrupted ? (
-            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              No upstream paths were broken by this removal.
-            </p>
-          ) : (
-            <div style={pathListStyle}>
-              {disappearedPaths.map((p, idx) => (
-                <div key={idx} style={brokenPathRowStyle}>
-                  <span style={{ fontWeight: 700, color: "#be123c", flexShrink: 0 }}>✕</span>
-                  <span style={{ color: "#475569", fontSize: "0.72rem", marginRight: "0.5rem" }}>
-                    {p.hops} hop{p.hops !== 1 ? "s" : ""}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#be123c" }}>
-                    {p.broken_path.join(" ➔ ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Surviving Paths (alternate routes) */}
-        <div style={{ marginBottom: "0.85rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
-            <h4 style={sectionHeadingStyle}>
-              <CheckCircle2 size={13} color="#16a34a" style={{ verticalAlign: "middle" }} />&nbsp;
-              Surviving Paths ({survivingPaths.length}
-              {(simulation.surviving_paths_count ?? 0) > survivingPaths.length
-                ? ` of ${simulation.surviving_paths_count} shown`
-                : ""})
-              <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 400, marginLeft: "0.5rem" }}>
-                — alternate upstream routes verified in the scenario copy
-              </span>
-            </h4>
-            {hasSurviving && (
-              <button
-                onClick={() => setShowSurviving((v) => !v)}
-                style={{ fontSize: "0.72rem", border: "none", background: "none", color: "var(--accent-blue)", cursor: "pointer" }}
-              >
-                {showSurviving ? "Hide" : "Show"}
-              </button>
+            {candidates.length === 0 ? (
+              <option value="">No candidate modules in graph</option>
+            ) : (
+              candidates.map((cand) => (
+                <option key={cand.id} value={cand.id}>
+                  {cand.name} (callers: {cand.in_degree}, deps: {cand.out_degree})
+                </option>
+              ))
             )}
-          </div>
+          </select>
+        </div>
 
-          {!hasSurviving ? (
-            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              No alternate upstream paths survive this removal — all routes intersected the removed module.
-            </p>
-          ) : showSurviving ? (
-            <div style={pathListStyle}>
-              {survivingPaths.map((p, idx) => (
-                <div key={idx} style={survivingPathRowStyle}>
-                  <CheckCircle2 size={12} color="#16a34a" style={{ flexShrink: 0 }} />
-                  <span style={{ color: "#475569", fontSize: "0.72rem", marginRight: "0.5rem" }}>
-                    {p.hops} hop{p.hops !== 1 ? "s" : ""}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#15803d" }}>
-                    {p.surviving_path.join(" ➔ ")}
-                  </span>
-                </div>
-              ))}
-            </div>
+        <button
+          onClick={handleRun}
+          disabled={isRunningSimulation || candidates.length === 0}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            padding: "0.45rem 0.9rem",
+            borderRadius: "6px",
+            backgroundColor: isRunningSimulation || candidates.length === 0 ? "#94a3b8" : "var(--accent-blue, #2563eb)",
+            color: "#ffffff",
+            border: "none",
+            fontSize: "0.8rem",
+            fontWeight: 600,
+            cursor: isRunningSimulation || candidates.length === 0 ? "not-allowed" : "pointer",
+            transition: "all 0.15s ease",
+          }}
+        >
+          {isRunningSimulation ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              <span>Cloning Graph & Simulating...</span>
+            </>
           ) : (
-            <p style={{ fontSize: "0.78rem", color: "#16a34a" }}>
-              {simulation.surviving_paths_count ?? 0} alternate path(s) confirmed in scenario graph.
-            </p>
+            <>
+              <Play size={14} />
+              <span>Run Counterfactual Simulation</span>
+            </>
           )}
-        </div>
+        </button>
+      </div>
 
-        {/* Newly Isolated */}
-        {isolatedModules.length > 0 && (
-          <div style={{ marginBottom: "0.85rem" }}>
-            <h4 style={sectionHeadingStyle}>
-              <Info size={13} color="#d97706" style={{ verticalAlign: "middle" }} />&nbsp;
-              Newly Isolated Modules ({isolatedModules.length})
-              <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 400, marginLeft: "0.5rem" }}>
-                — modules whose only outgoing dependency was the removed target
-              </span>
-            </h4>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-              {isolatedModules.map((id) => (
-                <code key={id} style={{ fontSize: "0.72rem", padding: "0.2rem 0.4rem", backgroundColor: "#fef3c7", border: "1px solid #fcd34d", borderRadius: "3px", color: "#92400e" }}>
-                  {id}
+      {/* ── Simulation Results Area ── */}
+      {!simulation ? (
+        <div style={emptyStyle}>
+          <GitFork size={32} color="var(--accent-blue, #2563eb)" style={{ marginBottom: "0.5rem" }} />
+          <h4 style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-primary, #0f172a)", marginBottom: "0.25rem" }}>
+            Awaiting Counterfactual Simulation
+          </h4>
+          <p style={{ fontSize: "0.82rem", color: "var(--text-secondary, #475569)", maxWidth: "520px", lineHeight: 1.4 }}>
+            Select an active module above and click <strong>Run Counterfactual Simulation</strong>. FalkorDB will clone the active graph into an isolated scenario sandbox, excise the target component, compare all before-and-after routes, and calculate blast radius without modifying production data.
+          </p>
+        </div>
+      ) : (
+        <div style={{ backgroundColor: "var(--bg-card, #ffffff)", borderRadius: "8px", border: "1px solid var(--border-subtle, #e2e8f0)", overflow: "hidden" }}>
+          {/* Header */}
+          <div style={headerStyle}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <GitFork size={16} color="var(--accent-blue, #2563eb)" />
+              <h3 style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary, #0f172a)" }}>
+                Counterfactual Simulation — Removed:{" "}
+                <code style={{ fontFamily: "var(--font-mono, monospace)", color: "#e11d48", fontWeight: 700 }}>
+                  {simulation.target_module_name || simulation.target_module_id}
                 </code>
-              ))}
+              </h3>
+              {simulation.is_incomplete && (
+                <span style={incompleteBadge}>⚠ Partial results (path limit reached)</span>
+              )}
+            </div>
+
+            {/* View Toggle */}
+            <div style={toggleContainerStyle}>
+              <button
+                onClick={() => onToggleView("baseline")}
+                style={toggleBtnStyle(activeView === "baseline", "blue")}
+              >
+                Baseline
+              </button>
+              <button
+                onClick={() => onToggleView("scenario")}
+                style={toggleBtnStyle(activeView === "scenario", "red")}
+              >
+                Scenario (removed)
+              </button>
             </div>
           </div>
-        )}
 
-        {/* Disclaimer */}
-        <div style={disclaimerStyle}>
-          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: "0.1rem" }} />
-          <span>
-            <strong>Blast radius formula:</strong> broken_paths / baseline_paths_count ({simulation.disappeared_paths_count} / {simulation.baseline_paths_count} = {blastPct}%).&nbsp;
-            {simulation.disclaimer}
-          </span>
+          {/* Metrics Row */}
+          {(() => {
+            const blastPct = ((simulation.blast_radius_score ?? 0) * 100).toFixed(1);
+            const disappearedPaths = simulation.disappeared_paths ?? [];
+            const survivingPaths = simulation.surviving_paths ?? [];
+            const isolatedModules = simulation.newly_isolated_modules ?? [];
+
+            return (
+              <>
+                <div style={metricsGridStyle}>
+                  <MetricCard
+                    label="Baseline Paths"
+                    value={simulation.baseline_paths_count}
+                    color="var(--text-secondary, #475569)"
+                    title="Total upstream dependency paths to target in unmodified graph"
+                  />
+                  <MetricCard
+                    label="Broken Paths"
+                    value={simulation.disappeared_paths_count}
+                    color="#e11d48"
+                    title="Paths from baseline that no longer reach any destination after target removal"
+                  />
+                  <MetricCard
+                    label="Surviving Paths"
+                    value={simulation.surviving_paths_count}
+                    color="#16a34a"
+                    title="Upstream paths that still reach a valid destination via an alternate route"
+                  />
+                  <MetricCard
+                    label={`Blast Radius — ${blastPct}%`}
+                    value={`${blastPct}%`}
+                    color={simulation.blast_radius_score > 0.5 ? "#e11d48" : "#d97706"}
+                    title="broken_paths / baseline_paths_count — fraction of known upstream paths disrupted."
+                  />
+                  <MetricCard
+                    label="Surviving Modules"
+                    value={simulation.surviving_modules_count}
+                    color="var(--text-secondary, #475569)"
+                    title="Total Module nodes remaining in scenario copy"
+                  />
+                </div>
+
+                {/* Zero Impact Banner */}
+                {simulation.baseline_paths_count === 0 && (
+                  <div
+                    style={{
+                      margin: "0.75rem 1rem",
+                      padding: "0.6rem 0.85rem",
+                      borderRadius: "6px",
+                      backgroundColor: "#f8fafc",
+                      border: "1px solid var(--border-subtle, #e2e8f0)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      fontSize: "0.78rem",
+                      color: "var(--text-secondary, #475569)",
+                    }}
+                  >
+                    <Info size={15} color="var(--accent-blue, #2563eb)" />
+                    <span>
+                      <strong>Grounded zero-impact finding:</strong> The excised module has zero upstream callers in this snapshot. No dependency routes traversed it, confirming 0% architectural blast radius.
+                    </span>
+                  </div>
+                )}
+
+                {/* Newly Isolated Modules */}
+                {isolatedModules.length > 0 && (
+                  <div
+                    style={{
+                      margin: "0.75rem 1rem",
+                      padding: "0.65rem 0.85rem",
+                      borderRadius: "6px",
+                      backgroundColor: "rgba(225, 29, 72, 0.06)",
+                      border: "1px solid rgba(225, 29, 72, 0.2)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.78rem", fontWeight: 600, color: "#e11d48" }}>
+                      <AlertTriangle size={14} />
+                      <span>Newly Isolated Modules ({isolatedModules.length})</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      {isolatedModules.map((modId) => (
+                        <span
+                          key={modId}
+                          style={{
+                            fontFamily: "var(--font-mono, monospace)",
+                            fontSize: "0.72rem",
+                            backgroundColor: "#ffffff",
+                            border: "1px solid rgba(225, 29, 72, 0.3)",
+                            borderRadius: "4px",
+                            padding: "0.15rem 0.4rem",
+                            color: "#be123c",
+                          }}
+                        >
+                          {modId}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Disappeared Broken Paths List */}
+                {disappearedPaths.length > 0 && (
+                  <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid var(--border-subtle, #e2e8f0)" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#e11d48", marginBottom: "0.5rem" }}>
+                      Disrupted Dependency Routes ({disappearedPaths.length})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      {disappearedPaths.slice(0, 10).map((dp, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: "0.5rem 0.75rem",
+                            backgroundColor: "#fff1f2",
+                            border: "1px solid #ffe4e6",
+                            borderRadius: "6px",
+                            fontSize: "0.75rem",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, color: "#9f1239" }}>
+                            {dp.dependent_module_name}
+                          </span>
+                          <span style={{ fontFamily: "var(--font-mono, monospace)", color: "#e11d48" }}>
+                            {dp.broken_path ? dp.broken_path.join(" → ") : `${dp.hops} hops`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Surviving Paths Toggle */}
+                {survivingPaths.length > 0 && (
+                  <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid var(--border-subtle, #e2e8f0)" }}>
+                    <button
+                      onClick={() => setShowSurviving(!showSurviving)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        color: "#16a34a",
+                        padding: 0,
+                      }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>
+                        {showSurviving ? "Hide" : "Show"} Surviving Alternate Routes ({survivingPaths.length})
+                      </span>
+                    </button>
+
+                    {showSurviving && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.5rem" }}>
+                        {survivingPaths.slice(0, 8).map((sp, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              padding: "0.45rem 0.65rem",
+                              backgroundColor: "#f0fdf4",
+                              border: "1px solid #dcfce7",
+                              borderRadius: "6px",
+                              fontSize: "0.75rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, color: "#166534" }}>{sp.dependent_module_name}</span>
+                            <span style={{ fontFamily: "var(--font-mono, monospace)", color: "#15803d" }}>
+                              {sp.surviving_path ? sp.surviving_path.join(" → ") : `${sp.hops} hops`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Disclaimer */}
+                <div
+                  style={{
+                    padding: "0.6rem 1rem",
+                    borderTop: "1px solid var(--border-subtle, #e2e8f0)",
+                    backgroundColor: "var(--bg-muted, #f8fafc)",
+                    fontSize: "0.72rem",
+                    color: "var(--text-muted, #64748b)",
+                    fontStyle: "italic",
+                  }}
+                >
+                  {simulation.disclaimer || "Simulation prediction is derived from static dependency topology."}
+                </div>
+              </>
+            );
+          })()}
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// ── Internal Helper Components & Styles ───────────────────────────────────────
 
-const MetricCard: React.FC<{ label: string; value: string | number; color: string; title?: string }> = ({
-  label, value, color, title
-}) => (
-  <div title={title} style={{ cursor: title ? "help" : undefined }}>
-    <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.72rem", marginBottom: "0.15rem" }}>{label}</span>
-    <span style={{ fontSize: "1.1rem", fontWeight: 700, color }}>{value}</span>
+interface MetricCardProps {
+  label: string;
+  value: string | number;
+  color: string;
+  title?: string;
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({ label, value, color, title }) => (
+  <div style={metricCardStyle} title={title}>
+    <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #64748b)" }}>{label}</div>
+    <div style={{ fontSize: "1.2rem", fontWeight: 700, color, marginTop: "0.15rem" }}>{value}</div>
   </div>
 );
 
-// ── Styles ─────────────────────────────────────────────────────────────────
-
 const emptyStyle: React.CSSProperties = {
-  padding: "2rem",
+  padding: "2rem 1.5rem",
   textAlign: "center",
-  color: "var(--text-muted)",
-  backgroundColor: "var(--bg-card)",
+  backgroundColor: "var(--bg-card, #ffffff)",
   borderRadius: "8px",
-  border: "1px solid var(--border-subtle)",
+  border: "1px solid var(--border-subtle, #e2e8f0)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const headerStyle: React.CSSProperties = {
   padding: "0.75rem 1rem",
-  backgroundColor: "var(--bg-muted)",
-  borderBottom: "1px solid var(--border-subtle)",
+  backgroundColor: "var(--bg-muted, #f8fafc)",
+  borderBottom: "1px solid var(--border-subtle, #e2e8f0)",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -261,100 +414,50 @@ const headerStyle: React.CSSProperties = {
   gap: "0.5rem",
 };
 
+const toggleContainerStyle: React.CSSProperties = {
+  display: "flex",
+  backgroundColor: "#ffffff",
+  border: "1px solid var(--border-subtle, #cbd5e1)",
+  borderRadius: "6px",
+  overflow: "hidden",
+};
+
+const toggleBtnStyle = (active: boolean, color: "blue" | "red"): React.CSSProperties => ({
+  padding: "0.3rem 0.75rem",
+  fontSize: "0.75rem",
+  fontWeight: active ? 700 : 500,
+  border: "none",
+  backgroundColor: active
+    ? color === "blue"
+      ? "var(--accent-blue, #2563eb)"
+      : "#e11d48"
+    : "transparent",
+  color: active ? "#ffffff" : "var(--text-secondary, #475569)",
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+});
+
 const metricsGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(6, 1fr)",
+  gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
   gap: "0.5rem",
   padding: "0.75rem 1rem",
-  backgroundColor: "#fafafa",
-  borderBottom: "1px solid var(--border-subtle)",
-  fontSize: "0.78rem",
 };
 
-const sectionHeadingStyle: React.CSSProperties = {
-  fontSize: "0.8rem",
-  fontWeight: 600,
-  marginBottom: "0.4rem",
-  color: "var(--text-primary)",
-  display: "flex",
-  alignItems: "center",
-};
-
-const pathListStyle: React.CSSProperties = {
-  maxHeight: "140px",
-  overflowY: "auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.3rem",
-};
-
-const brokenPathRowStyle: React.CSSProperties = {
-  fontSize: "0.74rem",
-  padding: "0.35rem 0.5rem",
-  backgroundColor: "#fff1f2",
-  border: "1px solid #fecdd3",
-  borderRadius: "4px",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const survivingPathRowStyle: React.CSSProperties = {
-  fontSize: "0.74rem",
-  padding: "0.35rem 0.5rem",
-  backgroundColor: "#f0fdf4",
-  border: "1px solid #bbf7d0",
-  borderRadius: "4px",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const disclaimerStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  backgroundColor: "#fffbeb",
-  border: "1px solid #fde68a",
-  borderRadius: "4px",
-  fontSize: "0.71rem",
-  color: "#78350f",
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.4rem",
+const metricCardStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-muted, #f8fafc)",
+  borderRadius: "6px",
+  padding: "0.6rem 0.75rem",
+  border: "1px solid var(--border-subtle, #e2e8f0)",
+  textAlign: "center",
 };
 
 const incompleteBadge: React.CSSProperties = {
   fontSize: "0.68rem",
-  padding: "0.1rem 0.4rem",
+  fontWeight: 600,
+  color: "#d97706",
   backgroundColor: "#fef3c7",
-  border: "1px solid #fcd34d",
+  border: "1px solid #fde68a",
   borderRadius: "4px",
-  color: "#92400e",
+  padding: "0.15rem 0.4rem",
 };
-
-const toggleContainerStyle: React.CSSProperties = {
-  display: "flex",
-  backgroundColor: "var(--bg-muted)",
-  padding: "0.15rem",
-  borderRadius: "6px",
-  border: "1px solid var(--border-subtle)",
-};
-
-function toggleBtnStyle(active: boolean, color: "blue" | "red"): React.CSSProperties {
-  return {
-    padding: "0.25rem 0.65rem",
-    fontSize: "0.75rem",
-    fontWeight: 600,
-    borderRadius: "4px",
-    border: "none",
-    cursor: "pointer",
-    backgroundColor: active ? (color === "blue" ? "var(--accent-blue)" : "#e11d48") : "transparent",
-    color: active ? "#ffffff" : "var(--text-secondary)",
-    transition: "all 0.15s ease",
-  };
-}

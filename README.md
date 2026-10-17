@@ -10,36 +10,49 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-151%2F151%20passing-brightgreen)](./tests)
-[![Vitest](https://img.shields.io/badge/vitest-23%2F23%20passing-brightgreen)](./frontend/tests)
+[![Tests](https://img.shields.io/badge/pytest-162%2F162%20passing-brightgreen)](./tests)
+[![Vitest](https://img.shields.io/badge/vitest-26%2F26%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
+> **Phase 23 Acceptance Matrix:** [`docs/PHASE23_ACCEPTANCE.md`](docs/PHASE23_ACCEPTANCE.md)  
+> **Phase 23 Final Report:** [`docs/PHASE23_FINAL_REPORT.md`](docs/PHASE23_FINAL_REPORT.md)  
+> **Phase 23 Baseline Audit:** [`docs/PHASE23_BASELINE.md`](docs/PHASE23_BASELINE.md)  
 > **Hackathon Submission Checklist:** [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md)  
-> **Phase 21 Acceptance Matrix:** [`docs/PHASE21_ACCEPTANCE.md`](docs/PHASE21_ACCEPTANCE.md)  
-> **Phase 21 Final Report:** [`docs/PHASE21_FINAL_REPORT.md`](docs/PHASE21_FINAL_REPORT.md)  
-> **Multi-Tenant Auth Blueprint:** [`docs/ACCOUNT_SIGNUP_RECOMMENDATION.md`](docs/ACCOUNT_SIGNUP_RECOMMENDATION.md)  
-> **Phase 20 Final Report:** [`docs/PHASE20_FINAL_REPORT.md`](docs/PHASE20_FINAL_REPORT.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
 
 ---
 
 ## 1. Executive Summary
 
-**NexusAct** is a graph-native AI engineering agent that investigates software repositories and connected data ecosystems as interactive, auditable knowledge graphs.
+**NexusAct** is a graph-native AI engineering agent that investigates software repositories, dependency topologies, and connected data ecosystems as interactive, auditable knowledge graphs.
 
-Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across five first-class input modes:
-1. **Software Repository Domain (Software Graph):** AST dependency parsing (Python, TypeScript, JavaScript/React), bounded reverse impact traversal, contributor expertise ranking, structural centrality (PageRank), counterfactual simulation with `GRAPH.COPY` isolation, interactive dual-mode SVG graph explorer (Investigation Path & Network Overview), and cryptographically verified GitHub action proposals.
-2. **Universal Public-Data Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly publications and citations (OpenAlex, Crossref), and organizations, researchers, and topics (Wikidata). All records are persisted idempotently into FalkorDB with strict provenance tracing and evidence links.
-3. **Public Vulnerability Security Triage (OSV):** Dynamic dependency analysis against OSV (Open Source Vulnerabilities) public database. Maps declared manifests (`package.json`, `package-lock.json`, `requirements.txt`) to `PackageDependency` and `Vulnerability` nodes in FalkorDB, tracing paths to consuming internal modules.
-4. **Real-Data Financial Fraud Investigation Engine (Phase 21):** Production-grade transaction network investigation powered by user-uploaded CSV/TSV/JSON records or 1-click AML benchmarks. Implements isolated FalkorDB graph namespaces (`fin_<dataset_id>`), direct OpenCypher reasoning for multi-hop circular loops (3–5 hops), shared hardware device/IP infrastructure matching, shortest-path tracing, and transparent mathematical risk scoring with strict read-only compliance guarantees.
-5. **Visual Semantics & Workspace Isolation:** Semantic node palettes (Account `#2563eb`, Transaction `#7c3aed`, Device `#0d9488`, IP `#d97706`, Merchant `#16a34a`, Module `#6366f1`) with persistent legends and dynamic type filtering; workspace context isolation ensuring codebase Git commits and file trees never leak into financial investigations.
-6. **Google Gemini LLM Planning Adapter:** Server-side function-calling and structured tool budget execution using official `google-genai` SDK (`gemini-2.5-flash`). Enforces tool allowlist and deterministic fallback.
-7. **Safe Internal Action Persistence:** Safe `SAVED` state in FalkorDB when GitHub credentials are unset, preventing unauthenticated remote execution.
-8. **Judge-Ready Project Explorer & Live Diagnostics:** Collapsible 3-column repository explorer with bounded file tree, AST symbol navigation, and direct FalkorDB graph relationship linkage; real-time operational diagnostics; dual-mode graph explorer with bidirectional graph/source synchronization; and an accessible, high-contrast light/dark design system (#0B1F3A primary navy).
-8. **Real Graph-Grounded Investigation Engine (Phase 19):** Dynamic, question-aware planning loop without hardcoded sequences; flow and reachability analysis across Codebase Walkthrough, OSV Security Triage, and isolated Financial Fraud topology; seamless Code Inspector cross-navigation; transparent FalkorDB Cypher risk indicator calculations; and resilient loop detection.
-9. **Final Judge-Ready Experience & Evidence Grounding (Phase 20):** Persistent vertical navigation across Explore, Analyze, Evidence & Action, and Specialized Workflows; grounded panel explanations across all 10 panels with SHA-256 LRU caching; truthful Gemini and fallback disclosure (`GEMINI_ACTIVE`, `FALLBACK_ACTIVE`); and verified genuine multi-hop reasoning over live FalkorDB graph data.
+Unlike conventional chatbots that hallucinate codebase relationships from flat text embeddings, NexusAct grounds its reasoning directly in **FalkorDB v4.4.1**. It traverses live dependency paths, simulates counterfactual architectural changes in isolated sandbox clones, traces code author expertise through Git commit history, and allows developers to converse with connected graph data through an integrated, read-only AI chat assistant.
+
+### Key Capabilities
+
+1. **Interactive Counterfactual Scenario Simulation (Phase 23):**
+   - Enables developers to excise any module from the dependency graph and simulate the blast radius.
+   - Leverages FalkorDB's native `GRAPH.COPY` to create ephemeral scenario clones (`scenario_sim_<uuid>`), recalculating surviving vs. severed paths without mutating production graphs.
+   - Provides honest, evidence-grounded zero-impact explanations for components with zero upstream callers.
+
+2. **Contributor & Reviewer Intelligence (Phase 23):**
+   - Discovers domain experts by traversing historical commit touch graphs: `(:Person)-[:AUTHORED]->(:Commit)-[:TOUCHES]->(:File)<-[:CONTAINS]-(:Module)`.
+   - Distinguishes code authors from peer reviewers, disclosing missing review evidence transparently and ranking candidates via a weighted composite scoring formula.
+
+3. **Graph-Grounded Right-Side AI Chat Assistant (Phase 23):**
+   - A persistent, slide-over drawer (`ChatAssistantDrawer`) bound to the active repository graph.
+   - Discovers FalkorDB graph schema on the fly, plans bounded read-only Cypher queries, strictly blocks mutating statements (`CREATE`, `MERGE`, `DELETE`, `DROP`), and renders live Cypher execution traces with millisecond latencies and clickable evidence navigation chips.
+
+4. **Multi-Domain Graph Exploration:**
+   - **Software Repository Domain:** AST dependency parsing (Python, TypeScript, JavaScript), reverse-impact blast radius, and structural PageRank centrality.
+   - **Public Knowledge Domain (Mode A):** Bounded discovery across AI models and datasets (Hugging Face Hub), scholarly works (OpenAlex, Crossref), and topics (Wikidata) persisted idempotently in FalkorDB.
+   - **Vulnerability Triage (OSV):** Correlates package manifests against the Open Source Vulnerabilities database and traces reachability to internal caller modules.
+   - **Financial Fraud Investigation (Phase 21):** Isolated graph namespaces (`fin_<dataset_id>`) detecting multi-hop circular loops (3–5 hops), shared device/IP infrastructure, and risk scoring.
+
+5. **Cryptographic Action Verification:**
+   - Proposed actions (such as automated GitHub issues) generate canonical SHA-256 integrity locks. External mutations require explicit human approval and verified hash readbacks.
 
 ---
 
@@ -47,205 +60,168 @@ Built on the **GraphAction Fabric (GAF)** architecture, NexusAct operates across
 
 ```mermaid
 graph TD
-    User["User / Engineering Lead"] -->|Question & Target| Workspace["NexusAct Workspace (React 19 + TypeScript)"]
-    Workspace -->|HTTP REST| API["FastAPI Backend (v0.2.0)"]
+    User["User / Engineering Lead"] -->|Question / Module Target| Workspace["NexusAct Workspace (React 19 + TypeScript)"]
+    Workspace -->|Slide-over Chat| ChatDrawer["Graph AI Chat Assistant (ChatAssistantDrawer)"]
+    
+    Workspace -->|REST API| API["FastAPI Backend (v0.2.0)"]
+    ChatDrawer -->|POST /chat| API
+    
     API -->|Repo Investigation| Agent["Adaptive Agent Loop (Planner)"]
-    API -->|Universal Ask GAF| Discovery["Universal Discovery Planner"]
+    API -->|Natural Language Q&A| ChatService["GraphChatService"]
+    API -->|Scenario Simulation| SimService["Simulation Engine"]
     
-    Agent -->|Gemini API / Fallback| LLM["Google Gemini Planner / Heuristic"]
+    Agent -->|Gemini API / Fallback| LLM["Google Gemini 2.5 Flash / Deterministic Heuristic"]
+    ChatService -->|Read-Only Cypher Planner| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    
+    SimService -->|GRAPH.COPY clone| ScenarioClone[("Scenario Clone (scenario_sim_*)")]
+    ScenarioClone -->|DETACH DELETE target| PathCalc["Surviving / Broken Path Calculator"]
+    PathCalc -->|GRAPH.DELETE cleanup| SimService
+    
     Agent -->|List / Call Tools| MCP["Model Context Protocol Server (mcp v2.3.0)"]
-    MCP -->|trace_impact / security_triage / fraud / simulate| FalkorDB[("FalkorDB v4.4.1 (Docker 127.0.0.1:6379)")]
+    MCP -->|trace_impact / security_triage / fraud| FalkorDB
     
-    MCP -->|Vulnerability Query| OSV["OSV Public Vulnerability API"]
-    
-    Discovery -->|Bounded Search| HF["Hugging Face Hub API"]
-    Discovery -->|Scholarly Works| OA["OpenAlex API"]
-    Discovery -->|DOI Resolution| CR["Crossref REST API"]
-    Discovery -->|QID Exploration| WD["Wikidata Action API"]
-    
-    HF & OA & CR & WD -->|Normalized Records| Persister["PublicGraphPersister"]
-    Persister -->|Idempotent Upsert| FalkorDB
-    
-    FalkorDB -->|Nodes & Edges| Verifier["PathVerifier (7-point check)"]
-    Verifier -->|VERIFIED / SUPPORTED| Action["GitHub Action Service"]
-    Action -->|Hash Approval & Readback| GitHub[("GitHub API (Sandboxed) / FalkorDB Saved Task")]
+    FalkorDB -->|Path Evidence| Verifier["PathVerifier (7-point check)"]
+    Verifier -->|SHA-256 Hash Lock| Action["Action Service"]
+    Action -->|Approved Hash Readback| GitHub[("GitHub API / Sandboxed Local Task")]
 ```
 
-### Graph Model & Domain Separation
+---
 
-NexusAct maintains strict physical and logical graph isolation in FalkorDB:
+## 3. Graph Data Models & Key Cypher Patterns
+
+NexusAct maintains strict logical and physical graph isolation in FalkorDB:
+
+### Core Schemas
+
 - **Software Codebase Graphs (`nexusact_main`, `repo_*`):**
-  - **Canonical Dependency Direction:** `(DependentModule)-[:DEPENDS_ON]->(DependencyModule)`. Reverse-impact analysis traverses upstream callers pointing to the target dependency.
-  - **Schema:** `Module`, `File`, `Person`, `Commit`, `PackageDependency`, `Vulnerability`, `SecurityFinding`.
-- **Synthetic Fraud Graph (`nexusact_fraud_demo`):**
-  - Dedicated isolated demonstration namespace for multi-hop financial topology analysis.
-  - **Schema:** `Account`, `Person`, `Device`, `IPAddress`, `Merchant`, `Transaction`.
-  - **Relationships:** `OWNS`, `USES_DEVICE`, `USES_IP`, `SENDS_TO`, `PAYS`.
-- **Public Knowledge Graphs (`nexusact_public`):**
-  - Independent discovery space for AI models, datasets, papers, authors, and organizations.
-  - **Schema:** `Model`, `Dataset`, `Paper`, `Organization`, `Topic`, `SourceRecord`, `Investigation`.
-- **Evidence Provenance:** Edges store `evidence_type` (`observed`, `derived`, `inferred`), `source_file`, confidence (`EXACT`, `HIGH`, `SUPPORTED`), and source provenance URLs.
+  - **Nodes:** `(:Module)`, `(:File)`, `(:Person)`, `(:Commit)`, `(:PackageDependency)`, `(:Vulnerability)`
+  - **Relationships:**
+    - `(:Module)-[:DEPENDS_ON]->(:Module)` (Canonical dependency direction)
+    - `(:Module)-[:CONTAINS]->(:File)`
+    - `(:Person)-[:AUTHORED]->(:Commit)`
+    - `(:Commit)-[:TOUCHES]->(:File)`
+    - `(:Module)-[:REQUIRES_PACKAGE]->(:PackageDependency)`
+    - `(:PackageDependency)-[:HAS_VULNERABILITY]->(:Vulnerability)`
 
-### Essential Cypher Queries & Graph Algorithms
+- **Financial Fraud Graphs (`fin_*`):**
+  - **Nodes:** `(:Account)`, `(:Person)`, `(:Device)`, `(:IPAddress)`, `(:Merchant)`, `(:Transaction)`
+  - **Relationships:** `(:Person)-[:OWNS]->(:Account)`, `(:Account)-[:SENDS_TO]->(:Account)`, `(:Account)-[:USES_DEVICE]->(:Device)`
 
-FalkorDB performs non-trivial, graph-native computation essential to NexusAct:
+### Essential Cypher Queries
 
-1. **Reverse Dependency Impact Traversal (Up to 4 Hops):**
+1. **Reverse Impact Blast Radius Traversal:**
    ```cypher
    MATCH path = (caller:Module)-[:DEPENDS_ON*1..4]->(target:Module {id: $target_id})
-   RETURN caller.id, caller.name, length(path) AS depth, [r IN relationships(path) | r.id] AS rel_ids
+   RETURN caller.id, caller.name, length(path) AS depth
    ORDER BY depth ASC
    ```
 
-2. **Multi-Hop Shortest Path Traversal:**
-   ```cypher
-   MATCH (src:Module {id: $src_id}), (dst:Module {id: $dst_id})
-   WITH src, dst, shortestPath((src)-[:DEPENDS_ON*]->(dst)) AS path
-   RETURN [n IN nodes(path) | n.id] AS path_nodes, [r IN relationships(path) | type(r)] AS rel_types, length(path) AS hops
-   ```
-
-3. **PageRank Structural Centrality:**
-   ```cypher
-   CALL algo.pageRank('Module', 'DEPENDS_ON', {damping: 0.85, iterations: 20})
-   YIELD node, score
-   RETURN node.id AS module_id, node.name AS module_name, score
-   ORDER BY score DESC LIMIT $top_k
-   ```
-
-4. **Counterfactual Simulation via Isolated Clone (`GRAPH.COPY`):**
+2. **Counterfactual Simulation via Isolated Clone (`GRAPH.COPY`):**
    ```cypher
    GRAPH.COPY nexusact_main scenario_sim_a1b2c3d4
-   // In clone: excises target module and recalculates surviving vs broken paths
+   // In isolated clone:
    MATCH (m:Module {id: $target_id}) DETACH DELETE m
-   // Comparison query between baseline and cloned scenario
-   // Clone is guaranteed destroyed in finally block:
+   // Recalculate broken and surviving paths from affected callers
+   // Clone is guaranteed destroyed:
    GRAPH.DELETE scenario_sim_a1b2c3d4
    ```
 
-5. **Evidence-Based Contributor & Reviewer Expertise (who_knows):**
+3. **Contributor Expertise & File Touches:**
    ```cypher
    MATCH (p:Person)-[:AUTHORED]->(c:Commit)-[:TOUCHES]->(f:File)<-[:CONTAINS]-(m:Module)
-   WHERE m.id IN $affected_modules
-   RETURN p.id, p.name, count(DISTINCT f.id) AS files_touched, count(DISTINCT c.id) AS commits, max(c.timestamp) AS recency
-   ORDER BY files_touched DESC
+   WHERE m.id = $module_id
+   RETURN p.id, p.name, p.email, count(DISTINCT c) AS commits, count(DISTINCT f) AS files_touched, max(c.committed_at) AS last_touch
+   ORDER BY commits DESC, files_touched DESC
+   ```
+
+4. **Chat Assistant Dynamic Schema Discovery:**
+   ```cypher
+   CALL db.labels()
+   CALL db.relationshipTypes()
+   MATCH (m:Module) RETURN count(m) AS module_count
    ```
 
 ---
 
-## 3. Technology Stack & Environment
+## 4. Technology Stack & Verification Baseline
 
-| Component | Technology | Version |
+| Component | Technology | Version / Status |
 |---|---|---|
-| **Operating System** | Windows 11 with WSL2 runtime | - |
 | **Graph Database** | FalkorDB (Docker Container) | `v4.4.1` (Pinned) |
-| **Python** | CPython managed via `uv` | `3.12.8` |
-| **Backend** | FastAPI, Pydantic v2, Uvicorn | `0.115+` / `2.14+` |
-| **MCP SDK** | Official Python `mcp` SDK | `2.3.0` |
-| **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
-| **Public Connectors** | Hugging Face, OpenAlex, Crossref, Wikidata | Fixed API Constants |
-| **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
-| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **146/146 python, 20/20 vitest — all clean** |
+| **Backend Framework**| FastAPI, Pydantic v2, Uvicorn | `0.115+` / `2.14+` |
+| **Language Runtime** | CPython managed via `uv` | `3.12.8` |
+| **Tool Protocol** | Model Context Protocol (`mcp`) SDK | `2.3.0` |
+| **Frontend UI** | React 19, TypeScript Strict, Vite | `19.2.8` / `6.0.2` / `8.3.4` |
+| **LLM Provider** | Google Gemini 2.5 Flash / Deterministic Fallback | Official `google-genai` SDK |
+| **Python Tests** | Pytest (Integration, Regression, Unit) | **162/162 passing** (66s) |
+| **Frontend Tests**| Vitest (Testing Library, React 19) | **26/26 passing** (6s) |
+| **Linters & Typers** | Ruff, Mypy, Oxlint | **0 errors, 0 warnings across all files** |
 
 ---
 
-## 4. Quick Start & Local Run Commands
+## 5. Quick Start & Local Run Commands
 
 ### 1. Prerequisites
+- Docker Desktop with WSL2 integration (Windows) or native Docker (Linux/macOS)
+- Python 3.12+ (uv recommended)
+- Node.js 22+ and npm
 
-- Docker Desktop with WSL2 integration (or bare WSL2 Docker daemon)
-- Python 3.11+ with `uv` installed
-- Node.js 22+
-
-### 2. Start All Services (Resilient Startup)
-
+### 2. Launch Local Environment (PowerShell)
 ```powershell
-# Starts FalkorDB, verifies Cypher readiness via Python probe (survives Redis AOF loading),
-# launches FastAPI backend (8000), and starts Vite frontend (5173)
+# 1. Start FalkorDB and verify Cypher socket readiness
 .\scripts\start.ps1
-```
 
-### 3. Check Service Status & Readiness
-
-```powershell
-# Non-destructive status check verifying FalkorDB, FastAPI, and Vite
+# 2. Check service status
 .\scripts\status.ps1
 ```
 
-### 4. Ingest Repository into FalkorDB
-
+### 3. Ingest Local Codebase
 ```powershell
-# Runs AST parser and Git history extractor on the local workspace
+# Ingests AST modules, dependencies, and Git commit history into FalkorDB
 .\scripts\ingest.ps1
 ```
 
-### 5. Run Quality & Validation Suite
-
+### 4. Run the Full Quality Suite
 ```powershell
-# Runs ruff, mypy, pytest (118 tests), oxlint, vitest (13 tests), and production build
-.\scripts\check.ps1
+# Backend linter & type checks
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe format --check backend tests mcp_server
+.\.venv\Scripts\mypy.exe backend mcp_server
+
+# Backend test suite (162 tests)
+.\.venv\Scripts\pytest.exe -q
+
+# Frontend checks & tests (26 tests)
+cd frontend
+npm run lint
+npm test
+npm run build
+cd ..
 ```
 
-### 6. Production Local Deployment (All Three Services via Docker)
-
+### 5. Production Docker Compose Deployment
 ```powershell
-# Build and start all services with persistent storage
+# Validate compose configuration
+docker compose -f docker-compose.prod.yml config
+
+# Launch production stack (FalkorDB, FastAPI, Frontend on port 3000)
 docker compose -f docker-compose.prod.yml up --build -d
-
-# Access frontend at http://localhost:3000
 ```
-
-### 7. Stop Local Services
-
-```powershell
-.\scripts\stop.ps1
-```
+Access the application at `http://localhost:3000`.
 
 ---
 
-## 5. Live Deployment Options
+## 6. Security, Isolation & Safety Bounds
 
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of free-tier deployment options.
-
-### Summary
-
-| Option | Cost | Persistence | Verdict |
-|---|---|---|---|
-| **Local docker-compose.prod.yml** | Free | ✅ Full AOF persistence | ✅ Recommended |
-| **FalkorDB Cloud Free + Render.com** | Free | ⚠️ Demo only (no backups) | ⚠️ Hackathon demo only |
-| **Railway.app Trial** | $5 trial credit | ✅ 0.5 GB volume | ✅ Best live option |
-
-> **Honest note:** A fully persistent, always-on deployment at true zero cost is not available because FalkorDB requires a stateful process. The local docker-compose approach is the most reliable option for demos and production.
+1. **Ephemeral Sandboxing:** Counterfactual simulations clone via `GRAPH.COPY` into random `scenario_sim_<uuid>` namespaces and delete them in guaranteed `finally` blocks.
+2. **Read-Only Chat Cypher Enforcement:** The chat service strictly blocks mutating Cypher statements (`CREATE`, `MERGE`, `DELETE`, `SET`, `DROP`, `ALTER`, `CALL dbms.*`) and bounds graph traversal depth (`*1..3`).
+3. **Cryptographic Action Binding:** Proposed GitHub issues calculate canonical SHA-256 hashes of their target entity, question, and action body.
+4. **Transparent Degradation:** If `GEMINI_API_KEY` or `GITHUB_TOKEN` is unset, NexusAct operates with full deterministic graph intelligence and local saved states without fabricating fake responses.
 
 ---
 
-## 6. Security & Isolation Guarantees
+## 7. AI-Assisted Development Disclosure
 
-1. **Docker Daemon Security:** The Docker daemon running inside WSL2 binds to loopback-only (`127.0.0.1:2375`). Never exposed on `0.0.0.0`.
-2. **Database Protection:** The primary graph (`nexusact_main`) is listed in `PROTECTED_GRAPHS`. Counterfactual simulations clone via `GRAPH.COPY` and strictly delete temporary clones in `finally` blocks.
-3. **No Dynamic Cypher Injection:** All Cypher queries use parameterized inputs with typed Pydantic payloads.
-4. **Action Approval Binding:** Issue proposals compute a canonical SHA-256 hash. External submission requires the exact approved hash.
-5. **Idempotency Reconciliation:** Every proposed issue embeds a `<!-- GAF-ACTION-MARKER:<hash> -->` marker to prevent duplicates.
-6. **Honest Fallback:** If Ollama, Gemini, or GitHub tokens are unconfigured, NexusAct operates with full local graph intelligence and previews without fabricating fake reviews or external states.
-7. **TrustedHostMiddleware:** Enabled in `APP_ENV=production` to prevent Host header injection attacks.
-8. **Non-root Docker containers:** Both backend and frontend containers run as a non-root `nexusact` system user.
-9. **API Docs hidden in production:** Swagger UI and ReDoc are disabled when `APP_ENV=production`.
-
----
-
-## 7. Verification Reports & Demonstration
-
-- **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md) — Comprehensive release rescue, FalkorDB LOADING resolution, end-to-end live workflow verification, and hackathon submission.
-- **Phase 14 Acceptance Matrix:** [`docs/PHASE14_ACCEPTANCE.md`](docs/PHASE14_ACCEPTANCE.md) — Detailed requirement-by-requirement test and limitation mapping.
-- **Phase 13 Completion Report:** [`docs/PHASE13_COMPLETION_REPORT.md`](docs/PHASE13_COMPLETION_REPORT.md) — OSV security triage, synthetic fraud investigation, and Gemini integration.
-- **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script with video recording checklist.
-- **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md) — Graph-truth audit, test outputs, and hackathon acceptance.
-- **Deployment Guide:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Production Compose and cloud hosting analysis.
-
----
-
-## 8. AI-Assisted Development Disclosure
-
-In accordance with the hackathon rules and transparency standards:
-- **AI Coding Assistant Usage:** Generative AI tools (Google Antigravity IDE agentic workflows) were utilized during the development lifecycle for interactive pair programming, test fixture authoring, AST parser refinement, and documentation scaffolding.
-- **Human Responsibility & Oversight:** The author conceived the system architecture (GraphAction Fabric), designed the FalkorDB graph schema and Cypher query patterns, established the security and cryptographic approval boundaries, debugged execution and rendering failures, verified all automated test suites, and retains full responsibility for the correctness, safety, and integrity of the submitted codebase.
-
+In accordance with hackathon rules:
+- **Generative AI Usage:** Google Antigravity IDE agentic workflows and Gemini 2.5 Flash were utilized during development for interactive pair programming, test suite authoring, Cypher optimization, and documentation generation.
+- **Human Authorship & Responsibility:** The system architecture (GraphAction Fabric), graph schemas, counterfactual simulation safety mechanisms, read-only Cypher query validation rules, and cryptographic approval pipelines were designed, reviewed, and verified by the author. Full responsibility for the codebase and submitted deliverables remains with the author.
