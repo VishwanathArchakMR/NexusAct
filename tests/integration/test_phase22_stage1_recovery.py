@@ -11,7 +11,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.agent.planner import AdaptiveInvestigationAgent, InvestigationReport
-from backend.app.core.config import settings
 from backend.app.graph.client import graph_client
 from backend.app.main import app
 from backend.app.sources.registry import repo_registry
@@ -24,7 +23,9 @@ def client():
 
 @pytest.mark.asyncio
 async def test_selected_repository_target_resolution_and_path_traversal():
-    """Verify that investigating AletheiaOS resolves real modules in AletheiaOS and does not hardcode NexusAct internal modules."""
+    """Verify that investigating AletheiaOS resolves real modules in AletheiaOS
+    and does not hardcode NexusAct internal modules.
+    """
     alethe_repo = repo_registry.get_repository("repo:vishwanatharchakmr_aletheiaos")
     assert alethe_repo is not None
 
@@ -88,3 +89,20 @@ def test_llm_connectivity_honest_fallback_disclosure(client):
     if data["status"] == "NOT_CONFIGURED":
         assert data["credentials_detected"] is False
         assert "No server-side GEMINI_API_KEY detected" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_local_nexusact_investigation_workflow():
+    """Verify that investigating local NexusAct repository still uses its verified router -> client path."""
+    agent = AdaptiveInvestigationAgent(client=graph_client, max_tool_budget=3)
+    report: InvestigationReport = await agent.investigate(
+        question="How does the API route requests to the graph storage engine?",
+        repo_id="repo:local_nexusact",
+        investigation_mode="codebase_walkthrough",
+    )
+
+    assert report.repository_id == "repo:local_nexusact"
+    assert report.graph_name == "nexusact_main"
+    assert "backend.app.api.router" in report.target_module_id
+    assert report.verification is not None
+    assert report.verification.status.value in ("VERIFIED", "SUPPORTED")
