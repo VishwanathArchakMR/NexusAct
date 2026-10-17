@@ -180,10 +180,36 @@ async def execute_security_triage(
 
     # Resolve repository local path
     repo_rec = repo_registry.get_repository(repo_id)
-    repo_root = Path(repo_rec.url_or_path) if repo_rec and os.path.exists(repo_rec.url_or_path) else Path(".")
+    repo_root: Optional[Path] = None
+    if repo_rec and repo_rec.url_or_path and os.path.exists(repo_rec.url_or_path):
+        repo_root = Path(repo_rec.url_or_path)
+    elif not payload.repository_id or payload.repository_id == "repo:local_nexusact":
+        repo_root = Path(".")
 
     manifests_inspected: List[str] = []
     discovered_deps: List[Dict[str, Any]] = []
+    uncertainties: List[str] = []
+
+    if repo_root is None:
+        uncertainties.append(
+            f"Repository '{repo_id}' local working tree or manifest files are not accessible on the host filesystem. "
+            "Dependency manifests could not be inspected."
+        )
+        return SecurityTriageOutput(
+            repository_id=repo_id,
+            graph_name=target_graph,
+            manifests_inspected=[],
+            dependencies_analyzed_count=0,
+            vulnerabilities_found=[],
+            total_vulnerabilities_count=0,
+            critical_count=0,
+            remediation_proposal=(
+                f"Manifests unavailable for repository '{repo_id}'. "
+                "Ensure repository is cloned locally to perform security triage."
+            ),
+            uncertainties=uncertainties,
+            evidence_status="MANIFESTS_UNAVAILABLE",
+        )
 
     # 1. Parse Package Manifests
     pkg_lock = repo_root / "frontend" / "package-lock.json"
@@ -229,7 +255,6 @@ async def execute_security_triage(
     deps_to_query = list(unique_deps_map.values())[:30]
 
     findings: List[VulnerabilityFinding] = []
-    uncertainties: List[str] = []
     critical_count = 0
     high_count = 0
 
@@ -388,11 +413,24 @@ async def execute_security_triage(
             + "\n".join(remed_items)
             + "\n\nVerify compatibility with downstream consumers before applying lockfile updates."
         )
+    if not manifests_inspected:
+        uncertainties.append(
+            "No supported package manifests (package-lock.json, package.json, requirements.txt) "
+            "detected in repository root."
+        )
+        remediation_proposal = (
+            "No package manifests detected. Ensure dependencies are declared in supported manifest formats "
+            "(package.json, package-lock.json, requirements.txt)."
+        )
+        evidence_status = "NO_MANIFESTS_FOUND"
+    elif findings:
+        evidence_status = "CONFIRMED_PUBLIC_EVIDENCE"
     else:
         remediation_proposal = (
             f"No published vulnerabilities found across {len(deps_to_query)} scanned dependencies "
-            f"in manifests ({', '.join(manifests_inspected) if manifests_inspected else 'None detected'})."
+            f"in manifests ({', '.join(manifests_inspected)})."
         )
+        evidence_status = "NO_KNOWN_VULNERABILITIES"
 
     return SecurityTriageOutput(
         repository_id=repo_id,
@@ -405,5 +443,5 @@ async def execute_security_triage(
         high_count=high_count,
         remediation_proposal=remediation_proposal,
         uncertainties=uncertainties,
-        evidence_status="CONFIRMED_PUBLIC_EVIDENCE" if findings else "NO_KNOWN_VULNERABILITIES",
+        evidence_status=evidence_status,
     )

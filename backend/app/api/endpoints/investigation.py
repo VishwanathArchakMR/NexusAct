@@ -17,6 +17,11 @@ from backend.app.graph.tools.centrality import (
     PageRankOutput,
     execute_page_rank,
 )
+from backend.app.graph.tools.fraud import (
+    FraudInvestigationInput,
+    FraudInvestigationOutput,
+    execute_investigate_fraud,
+)
 from backend.app.graph.tools.impact import (
     TraceImpactInput,
     TraceImpactOutput,
@@ -26,6 +31,11 @@ from backend.app.graph.tools.reviewers import (
     WhoKnowsInput,
     WhoKnowsOutput,
     execute_who_knows,
+)
+from backend.app.graph.tools.security_triage import (
+    SecurityTriageInput,
+    SecurityTriageOutput,
+    execute_security_triage,
 )
 from backend.app.graph.tools.simulation import (
     SimulateRemoveModuleInput,
@@ -134,6 +144,26 @@ def tool_simulate_removal(payload: SimulateRemoveModuleInput) -> SimulationResul
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error("simulation failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tools/security-triage", response_model=SecurityTriageOutput)
+async def tool_security_triage(payload: SecurityTriageInput) -> SecurityTriageOutput:
+    """Executes dependency security triage against public OSV vulnerability evidence."""
+    try:
+        return await execute_security_triage(payload)
+    except Exception as e:
+        logger.error("security_triage failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tools/investigate-fraud", response_model=FraudInvestigationOutput)
+def tool_investigate_fraud(payload: FraudInvestigationInput) -> FraudInvestigationOutput:
+    """Executes graph traversal on isolated synthetic fraud demonstration graph."""
+    try:
+        return execute_investigate_fraud(payload)
+    except Exception as e:
+        logger.error("investigate_fraud failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

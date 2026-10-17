@@ -349,7 +349,14 @@ class AdaptiveInvestigationAgent:
             tool_args = tool_call.arguments or {}
             purpose = tool_call.reasoning
 
-            # Ensure tool arguments target the module if required
+            # Strict tool allowlist enforcement
+            valid_tool_names = {t["name"] for t in tools_metadata}
+            if tool_name not in valid_tool_names:
+                logger.warning("Model requested unapproved or unknown tool: '%s'. Rejecting step.", tool_name)
+                remaining_budget -= 1
+                continue
+
+            # Ensure tool arguments target the resolved module if required
             if resolved_id:
                 if "module_identifier" in tool_args and not tool_args["module_identifier"]:
                     tool_args["module_identifier"] = resolved_id
@@ -361,10 +368,16 @@ class AdaptiveInvestigationAgent:
                 ):
                     tool_args["module_identifier"] = resolved_id
 
-            if "graph_name" not in tool_args and target_graph:
+            # Strictly enforce graph context: model cannot override selected graph
+            if tool_name == "nexusact_investigate_fraud":
+                tool_args["graph_name"] = "nexusact_fraud_demo"
+            elif target_graph:
                 tool_args["graph_name"] = target_graph
 
             if tool_name == "nexusact_source_metadata" and "repository_id" not in tool_args and resolved_repo_id:
+                tool_args["repository_id"] = resolved_repo_id
+
+            if tool_name == "nexusact_security_triage" and "repository_id" not in tool_args and resolved_repo_id:
                 tool_args["repository_id"] = resolved_repo_id
 
             # 4. Invoke MCP Tool

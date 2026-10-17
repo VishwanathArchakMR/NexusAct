@@ -78,8 +78,8 @@ if (-not $DockerMode) {
         }
         if ($LASTEXITCODE -eq 0 -and $wslPing -notmatch "error") {
             $DockerMode = "WSL2"
-            # Ensure WSL2 does not terminate when idle
-            Start-Process -FilePath "wsl" -ArgumentList @("-d", "Ubuntu", "-u", "root", "--", "/bin/bash", "-c", "while true; do sleep 3600; done") -WindowStyle Hidden
+            # Ensure WSL2 does not terminate when idle by running persistent keeper
+            Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-WindowStyle", "Hidden", "-Command", "wsl.exe -d Ubuntu -u root -- exec sleep 86400") -WindowStyle Hidden
             Write-Ok "WSL2 Docker daemon is responding (server $wslPing)"
         } else {
             Write-Warn "WSL2 Docker daemon not responding: $wslPing"
@@ -130,41 +130,50 @@ if ($DockerMode -eq "DockerDesktop") {
 }
 
 # -- Step 3: Wait for real FalkorDB readiness ----------------------------------
-# We do NOT just check TCP port open - we send an actual PING command via
-# the Python client, which verifies the FalkorDB module is loaded.
+# Uses the authoritative falkordb_probe.py to verify:
+# 1. Redis connection
+# 2. Cypher engine operational (disposable probe graph query)
+# 3. Gracefully retries transient LOADING state (AOF log replay)
 
 Write-Step "Waiting for FalkorDB readiness..."
 
-$maxWait = 30   # seconds
+$maxWait = 45   # seconds bounded timeout for dataset replay and Cypher init
 $interval = 2
 $elapsed = 0
 $ready = $false
+$lastProbeOutput = ""
 
 while ($elapsed -lt $maxWait) {
-    $pingResult = & .venv\Scripts\python.exe -c @"
-import sys
-try:
-    import falkordb
-    db = falkordb.FalkorDB(host='127.0.0.1', port=6379)
-    db.connection.ping()
-    print('READY')
-except Exception as e:
-    print(f'NOT_READY: {e}', file=sys.stderr)
-    sys.exit(1)
-"@ 2>&1
+    # Suppress NativeCommandError while testing readiness
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $probeOutput = & "$ProjectRoot\.venv\Scripts\python.exe" "$ProjectRoot\scripts\falkordb_probe.py" 2>&1 | Out-String
+    $probeExit = $LASTEXITCODE
+    $ErrorActionPreference = $oldEap
 
-    if ($pingResult -match "READY") {
+    $lastProbeOutput = $probeOutput.Trim()
+
+    if ($probeExit -eq 0 -and $lastProbeOutput -like "READY*") {
         $ready = $true
-        Write-Ok "FalkorDB is ready on 127.0.0.1:6379"
+        Write-Ok "FalkorDB is ready on 127.0.0.1:6379 (verified via live Cypher probe)"
         break
+    } elseif ($probeExit -eq 2 -or $lastProbeOutput -like "LOADING*") {
+        Write-Host "  FalkorDB is loading persistent dataset into memory... ($elapsed s)" -ForegroundColor Yellow
+    } elseif ($probeExit -eq 3 -or $lastProbeOutput -like "CONNECTION_REFUSED*") {
+        Write-Host "  Waiting for FalkorDB port to respond... ($elapsed s)" -ForegroundColor DarkGray
+    } elseif ($probeExit -eq 6 -or $lastProbeOutput -like "MODULE_MISSING*") {
+        Write-Host "  Waiting for FalkorDB Cypher module initialization... ($elapsed s)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "  FalkorDB probe: $lastProbeOutput ($elapsed s)" -ForegroundColor DarkGray
     }
-    Write-Host "  Waiting... ($elapsed s)" -ForegroundColor DarkGray
+
     Start-Sleep -Seconds $interval
     $elapsed += $interval
 }
 
 if (-not $ready) {
     Write-Fail "FalkorDB did not become ready within $maxWait seconds."
+    Write-Host "  Last probe output: $lastProbeOutput" -ForegroundColor Red
     Write-Host "  Check container logs:" -ForegroundColor Yellow
     if ($DockerMode -eq "DockerDesktop") {
         docker logs nexusact_falkordb 2>&1 | Select-Object -Last 20
@@ -188,7 +197,7 @@ $backendRunning = $false
 
 # Check if backend is already running on port 8000
 try {
-    $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -ErrorAction Stop
+    $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
     if ($resp.StatusCode -eq 200) {
         $backendRunning = $true
         $backendReady = $true
@@ -215,7 +224,7 @@ if (-not $backendRunning) {
     for ($i = 0; $i -lt 15; $i++) {
         Start-Sleep -Seconds 2
         try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
                 $backendReady = $true
                 break
@@ -237,7 +246,7 @@ if (-not $SkipFrontend) {
 
     $frontendRunning = $false
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 2 -ErrorAction Stop
+        $resp = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
         if ($resp.StatusCode -eq 200) {
             $frontendRunning = $true
             Write-Ok "Frontend Vite server is already running at http://localhost:5173"
@@ -253,7 +262,7 @@ if (-not $SkipFrontend) {
         for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep -Seconds 2
             try {
-                $resp = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 2 -ErrorAction Stop
+                $resp = Invoke-WebRequest -Uri "http://localhost:5173" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
                 if ($resp.StatusCode -eq 200) {
                     $frontendRunning = $true
                     break
@@ -273,22 +282,29 @@ if (-not $SkipFrontend) {
 
 Write-Step "Service Status" "Green"
 
-Write-Host "`n  Service         Status       URL" -ForegroundColor White
-Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
-Write-Host "  FalkorDB        READY        127.0.0.1:6379 (Docker, loopback-only)" -ForegroundColor Green
+$falkorStatus = if ($ready) { "READY" } else { "FAILED" }
+$backendStatus = if ($backendReady) { "READY" } else { "FAILED" }
+$frontendStatus = if ($SkipFrontend -or $DatabaseOnly) { "SKIPPED" } elseif ($frontendRunning) { "READY" } else { "DEGRADED" }
 
-if ($backendReady) {
-    Write-Host "  FastAPI         READY        http://127.0.0.1:8000" -ForegroundColor Green
-} else {
-    Write-Host "  FastAPI         STARTING     http://127.0.0.1:8000 (check in a moment)" -ForegroundColor Yellow
+Write-Host "`n  Service         Status       URL / Endpoint" -ForegroundColor White
+Write-Host "  ----------------------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "  FalkorDB        $($falkorStatus.PadRight(12)) 127.0.0.1:6379 (Cypher operational)" -ForegroundColor $(if ($ready) { "Green" } else { "Red" })
+Write-Host "  FastAPI         $($backendStatus.PadRight(12)) http://127.0.0.1:8000" -ForegroundColor $(if ($backendReady) { "Green" } else { "Red" })
+if (-not $DatabaseOnly) {
+    Write-Host "  Vite Frontend   $($frontendStatus.PadRight(12)) http://localhost:5173" -ForegroundColor $(if ($frontendRunning) { "Green" } elseif ($SkipFrontend) { "DarkGray" } else { "Yellow" })
 }
 
-if (-not $SkipFrontend -and -not $DatabaseOnly) {
-    Write-Host "  Vite Frontend   STARTING     http://localhost:5173" -ForegroundColor Yellow
+Write-Host "`n  Logs:" -ForegroundColor White
+Write-Host "    Backend stdout: $ProjectRoot\logs\backend.log" -ForegroundColor DarkGray
+Write-Host "    Backend stderr: $ProjectRoot\logs\backend.err.log" -ForegroundColor DarkGray
+Write-Host "  API Docs:         http://127.0.0.1:8000/docs" -ForegroundColor DarkCyan
+Write-Host "  Readiness check:  http://127.0.0.1:8000/ready" -ForegroundColor DarkCyan
+Write-Host "  Status helper:    .\scripts\status.ps1" -ForegroundColor DarkCyan
+Write-Host "  To stop:          .\scripts\stop.ps1" -ForegroundColor DarkCyan
+Write-Host "`n=== NexusAct local services started ===" -ForegroundColor Green
+
+if (-not $backendReady) {
+    Write-Fail "FastAPI backend failed to start cleanly. Check logs at $ProjectRoot\logs\backend.err.log"
+    exit 1
 }
 
-Write-Host ""
-Write-Host "  API docs:        http://127.0.0.1:8000/docs" -ForegroundColor DarkCyan
-Write-Host "  To stop:         .\scripts\stop.ps1" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host "=== NexusAct local services started ===" -ForegroundColor Green

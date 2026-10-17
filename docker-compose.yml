@@ -19,11 +19,11 @@ services:
       - nexusact_falkordb_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG > /dev/null || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 5s
+      start_period: 15s
     environment:
       - BROWSER=0
       - REDIS_ARGS=--appendonly yes --save ""

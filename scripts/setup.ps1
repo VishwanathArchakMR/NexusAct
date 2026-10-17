@@ -39,8 +39,7 @@ if (-not (Test-Path ".venv")) {
 }
 
 Write-Host "Syncing Python dependencies with uv..." -ForegroundColor Cyan
-python -m uv sync
-python -m uv pip install --python .\.venv\Scripts\python.exe -e ".[dev]"
+python -m uv sync --extra dev
 Write-Host "[OK] Python dependencies installed." -ForegroundColor Green
 
 # 5. Setup Frontend

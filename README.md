@@ -10,15 +10,16 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-109%2F109%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-118%2F118%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
+> **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md)  
+> **Phase 14 Acceptance Matrix:** [`docs/PHASE14_ACCEPTANCE.md`](docs/PHASE14_ACCEPTANCE.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
 > **Phase 13 Completion Report:** [`docs/PHASE13_COMPLETION_REPORT.md`](docs/PHASE13_COMPLETION_REPORT.md)  
-> **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md)  
 
 ---
 
@@ -136,7 +137,7 @@ FalkorDB performs non-trivial, graph-native computation essential to NexusAct:
 | **Frontend** | React, TypeScript, Vite, Lucide | `19.2.8` / `6.0.2` / `8.3.4` |
 | **Public Connectors** | Hugging Face, OpenAlex, Crossref, Wikidata | Fixed API Constants |
 | **Local LLM** | Ollama (Local-first) / Heuristic Fallback | Configurable |
-| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **94/94 python, 13/13 vitest — all clean** |
+| **Quality Suite** | Pytest, Ruff, Mypy, Oxlint, Vitest | **118/118 python, 13/13 vitest — all clean** |
 
 ---
 
@@ -148,28 +149,36 @@ FalkorDB performs non-trivial, graph-native computation essential to NexusAct:
 - Python 3.11+ with `uv` installed
 - Node.js 22+
 
-### 2. Start All Services
+### 2. Start All Services (Resilient Startup)
 
 ```powershell
-# Starts FalkorDB, launches FastAPI backend (8000), and starts frontend (5173)
+# Starts FalkorDB, verifies Cypher readiness via Python probe (survives Redis AOF loading),
+# launches FastAPI backend (8000), and starts Vite frontend (5173)
 .\scripts\start.ps1
 ```
 
-### 3. Ingest Repository into FalkorDB
+### 3. Check Service Status & Readiness
+
+```powershell
+# Non-destructive status check verifying FalkorDB, FastAPI, and Vite
+.\scripts\status.ps1
+```
+
+### 4. Ingest Repository into FalkorDB
 
 ```powershell
 # Runs AST parser and Git history extractor on the local workspace
 .\scripts\ingest.ps1
 ```
 
-### 4. Run Quality & Validation Suite
+### 5. Run Quality & Validation Suite
 
 ```powershell
-# Runs ruff, mypy, pytest (94 tests), oxlint, vitest (13 tests), and production build
+# Runs ruff, mypy, pytest (118 tests), oxlint, vitest (13 tests), and production build
 .\scripts\check.ps1
 ```
 
-### 5. Production Local Deployment (All Three Services via Docker)
+### 6. Production Local Deployment (All Three Services via Docker)
 
 ```powershell
 # Build and start all services with persistent storage
@@ -178,7 +187,7 @@ docker compose -f docker-compose.prod.yml up --build -d
 # Access frontend at http://localhost:3000
 ```
 
-### 6. Stop Local Services
+### 7. Stop Local Services
 
 ```powershell
 .\scripts\stop.ps1
@@ -209,7 +218,7 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of 
 3. **No Dynamic Cypher Injection:** All Cypher queries use parameterized inputs with typed Pydantic payloads.
 4. **Action Approval Binding:** Issue proposals compute a canonical SHA-256 hash. External submission requires the exact approved hash.
 5. **Idempotency Reconciliation:** Every proposed issue embeds a `<!-- GAF-ACTION-MARKER:<hash> -->` marker to prevent duplicates.
-6. **Honest Fallback:** If Ollama or GitHub tokens are unconfigured, NexusAct operates with full local graph intelligence and previews without fabricating fake reviews or external states.
+6. **Honest Fallback:** If Ollama, Gemini, or GitHub tokens are unconfigured, NexusAct operates with full local graph intelligence and previews without fabricating fake reviews or external states.
 7. **TrustedHostMiddleware:** Enabled in `APP_ENV=production` to prevent Host header injection attacks.
 8. **Non-root Docker containers:** Both backend and frontend containers run as a non-root `nexusact` system user.
 9. **API Docs hidden in production:** Swagger UI and ReDoc are disabled when `APP_ENV=production`.
@@ -218,11 +227,11 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for a full, honest assessment of 
 
 ## 7. Verification Reports & Demonstration
 
-- **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md) — Judge-ready final verification, graph-truth audit, test outputs, and hackathon acceptance.
-- **Phase 12 Acceptance Matrix:** [`docs/PHASE12_ACCEPTANCE.md`](docs/PHASE12_ACCEPTANCE.md) — Comprehensive hackathon criteria mapping and verification evidence.
-- **Phase 11 Completion Report:** [`docs/PHASE11_COMPLETION_REPORT.md`](docs/PHASE11_COMPLETION_REPORT.md) — Graph canvas overhaul, clean CI fixtures, question-dependent tool selection, and dual theme.
+- **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md) — Comprehensive release rescue, FalkorDB LOADING resolution, end-to-end live workflow verification, and hackathon submission.
+- **Phase 14 Acceptance Matrix:** [`docs/PHASE14_ACCEPTANCE.md`](docs/PHASE14_ACCEPTANCE.md) — Detailed requirement-by-requirement test and limitation mapping.
+- **Phase 13 Completion Report:** [`docs/PHASE13_COMPLETION_REPORT.md`](docs/PHASE13_COMPLETION_REPORT.md) — OSV security triage, synthetic fraud investigation, and Gemini integration.
 - **Live Demonstration Guide:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — Step-by-step reproducible live demo script with video recording checklist.
-- **Phase 10 Release Report:** [`docs/PHASE10_COMPLETION_REPORT.md`](docs/PHASE10_COMPLETION_REPORT.md) — Input-driven Universal GAF verification and AST parsing.
+- **Phase 12 Final Report:** [`docs/PHASE12_FINAL_REPORT.md`](docs/PHASE12_FINAL_REPORT.md) — Graph-truth audit, test outputs, and hackathon acceptance.
 - **Deployment Guide:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Production Compose and cloud hosting analysis.
 
 ---

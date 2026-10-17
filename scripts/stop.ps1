@@ -26,6 +26,9 @@ if ($StopDatabase) {
     if ($LASTEXITCODE -ne 0) {
         wsl -d Ubuntu -u root docker stop nexusact_falkordb 2>&1 | Out-Null
     }
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { 
+        $_.CommandLine -like "*exec sleep 86400*"
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Write-Host "[OK] FalkorDB container stopped (persistent volume intact)." -ForegroundColor Green
 }
 

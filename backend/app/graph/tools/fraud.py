@@ -49,6 +49,7 @@ class FraudInvestigationOutput(BaseModel):
         "isolated graph 'nexusact_fraud_demo'. No real-world individuals, bank accounts, or financial "
         "transactions are represented."
     )
+    uncertainties: List[str] = Field(default_factory=list)
     recommended_action: str
 
 
@@ -192,10 +193,11 @@ def execute_investigate_fraud(
         patterns.append(
             FraudPatternFinding(
                 pattern_type="SHARED_INFRASTRUCTURE",
-                severity="HIGH",
+                severity="MEDIUM",
                 description=(
                     f"Synthetic accounts {acc1} and {acc2} operate concurrently on shared device "
-                    f"'{dev_id}' ({dev_model}), indicating common operational control."
+                    f"'{dev_id}' ({dev_model}). Shared infrastructure is a risk indicator requiring "
+                    "corroborating transaction velocity or ownership evidence, not standalone proof of fraud."
                 ),
                 involved_accounts=[acc1, acc2],
                 multi_hop_path=[acc1, dev_id, acc2],
@@ -242,6 +244,14 @@ def execute_investigate_fraud(
         "acc:101, acc:102, and acc:103. Preserve synthetic isolation."
     )
 
+    fraud_uncertainties = [
+        "Investigation is strictly scoped to synthetic demonstration data in 'nexusact_fraud_demo'.",
+        (
+            "Shared infrastructure indicates an association requiring transaction correlation, "
+            "not conclusive proof of fraud."
+        ),
+    ]
+
     return FraudInvestigationOutput(
         graph_name=graph,
         investigated_account=payload.target_account_id or ("acc:101" if patterns else None),
@@ -251,5 +261,6 @@ def execute_investigate_fraud(
         total_suspicious_volume_usd=total_suspicious_volume,
         summary=summary,
         risk_indicator=risk,
+        uncertainties=fraud_uncertainties,
         recommended_action=action_rec,
     )

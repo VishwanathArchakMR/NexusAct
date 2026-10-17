@@ -1,225 +1,118 @@
-# NexusAct — Live Demonstration Script (Phase 6 Release)
+# NexusAct — Live Demonstration Script (Phase 14 Hackathon Edition)
 
 **Project:** NexusAct — Graph-Native AI That Investigates, Simulates, and Acts  
 **Architecture:** GraphAction Fabric (GAF)  
-**Target:** Live Hackathon / Production Demo  
-**Audience:** Technical evaluators, architects, and engineering leaders  
+**Hackathon Track:** *Agents That Act on Connected Data*  
+**Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
+**Repository:** [https://github.com/VishwanathArchakMR/NexusAct.git](https://github.com/VishwanathArchakMR/NexusAct.git)  
 
 ---
 
-## 1. Prerequisites & Environment Setup
+## 1. Prerequisites & Clean Runtime Verification
 
-Verify local services are online before starting the presentation:
+Before beginning the demo, verify that all local services are healthy and ready:
 
 ```powershell
-# 1. Start services locally or via Docker Compose
+# 1. Start all services reliably (handles Docker / WSL2 and transient AOF loading)
 .\scripts\start.ps1
 
-# 2. Confirm readiness and database connectivity
-curl http://localhost:8000/api/v1/health/readiness
-# Expected: {"status":"READY","database_connected":true,"primary_graph_available":true}
+# 2. Inspect authoritative system status
+.\scripts\status.ps1
+# Expected Output:
+#   FalkorDB        READY        127.0.0.1:6379 (Live Cypher engine operational)
+#   FastAPI         READY        http://127.0.0.1:8000
+#   Vite Frontend   READY        http://localhost:5173
 
-# 3. Open browser to the interactive workspace
-# Frontend URL: http://localhost:5173  (or http://localhost:3000 in production Docker)
+# 3. Direct API readiness probe
+Invoke-RestMethod http://127.0.0.1:8000/ready
+# Expected: {"status":"READY","database":{"connected":true,"host":"127.0.0.1","port":6379,"graph":"nexusact_main"}}
 ```
+
+Open the web interface in your browser: **`http://localhost:5173`**.
 
 ---
 
 ## 2. Step-by-Step Live Demonstration Flow
 
-### Scene 1: Repository Onboarding & Graph Ingestion
-
-1. In the header bar, click **"+ Onboard Repo"**.
-2. **Local Repository Demo:**
-   - Enter Local Path: `.` (or choose a test repository).
-   - Display Name: `NexusAct (Self-Analysis)`
-   - Click **"Register & Ingest"**.
-3. **What to highlight to the audience:**
-   - Real AST parsing extracts internal module namespaces (`backend.app.graph.tools.impact`).
-   - Resolves relative imports (`from .impact import resolve_module_id`).
-   - Extracts genuine Git commit history and author metadata without executing build scripts.
-   - Idempotent: repeated ingestions update revision metadata without duplicate nodes.
+### Scene 1: Multi-Repository Selection & Physical Graph Separation
+1. In the header bar, observe the **Repository Selector**.
+2. Notice the pre-ingested repositories:
+   - `NexusAct (Local Workspace)` (`nexusact_main` — 786 modules, 738 edges)
+   - `semantica-agi/semantica` (`repo_semantica_agi_semantica` — 1,067 modules, 7,387 edges)
+   - `LifeAssist AI (TypeScript)` (`repo_test_p12_ts` — multi-language TypeScript dependency graph)
+3. **What to highlight to judges:**
+   - NexusAct operates on **distinct physical graphs** in FalkorDB.
+   - Selecting a repository locks all queries, MCP tools, and action proposals strictly to that graph. No cross-graph leakage or silent fallback.
 
 ---
 
-### Scene 2: Natural-Language Investigation & Dynamic Entity Resolution
-
-1. In the investigation prompt bar, type a conversational engineering question:
-   > *"What happens if we refactor or remove the simulation tool?"*
-2. Leave the module identifier field empty (testing dynamic entity resolution).
-3. Click **"Run Investigation"** (or press Enter).
-4. **What to highlight to the audience:**
-   - **Entity Resolver:** Automatically extracts `"simulation"` from free-form text, matches `backend.app.graph.tools.simulation` with `EXACT` or `HIGH` confidence.
-   - **Ambiguity Detection:** Demonstrate typing a vague query like *"What breaks if I change tools?"*; observe candidate chips prompting for clarification rather than hallucinating an arbitrary target.
-
----
-
-### Scene 3: Bounded Reverse Impact Traversal (`trace_impact`)
-
-1. Observe the **Dependency Impact** section in the investigation report.
-2. **What to highlight to the audience:**
-   - **Correct Edge Direction:** In static analysis, `A imports B` means `A -[:DEPENDS_ON]-> B`. Therefore, changing `B` impacts `A` (upstream reverse traversal).
-   - Upstream dependents: `backend.app.api.endpoints.investigation`, `mcp_server.server`, `backend.app.agent.planner`.
-   - Bounded path depth (1 to 4 hops) prevents unbounded query blowup.
+### Scene 2: Codebase Investigation & Real Multi-Hop Reasoning
+1. Select `NexusAct (Local Workspace)`.
+2. In the investigation prompt bar, enter:
+   > *"What could break if I change backend.app.graph.client?"*
+3. Click **"Run Investigation"**.
+4. **What to highlight to judges:**
+   - **MCP Tool Execution Trace:** Observe the sequential execution of tools registered over the Model Context Protocol:
+     1. `nexusact_trace_impact`: Traverses reverse dependency paths up to 4 hops in FalkorDB, discovering 27 dependent modules (e.g. `backend.app.agent.planner`, `backend.app.api.endpoints.investigation`).
+     2. `nexusact_who_knows`: Evaluates contributor ownership evidence from Git commit history.
+     3. `nexusact_simulate_remove_module`: Runs isolated counterfactual simulation.
+   - **Multi-Hop Path Verification:** The PathVerifier audits traversed paths against FalkorDB, confirming every node, edge, and file path exists (`VERIFIED`).
+   - **Deterministic Fallback:** Show that the multi-hop reasoning operates completely deterministically even without an external LLM key, or via Google Gemini when configured.
 
 ---
 
-### Scene 4: Evidence-Backed Contributor Discovery (`who_knows`)
-
-1. Scroll to the **Reviewer Recommendations** section.
-2. **What to highlight to the audience:**
-   - Transparent 4-part scoring formula:
-     $$\text{Score} = 0.40 \times \text{FilesTouched} + 0.30 \times \text{Recency} + 0.20 \times \text{Ownership} + 0.10 \times \text{Reviews}$$
-   - Direct commit authors are credited.
-   - **Honest Evidence Gaps:** If peer reviews or PR metadata are not available locally or on GitHub, NexusAct honestly flags `NO_REVIEW_DATA` or `UNAVAILABLE` rather than fabricating synthetic reviews.
-
----
-
-### Scene 5: Counterfactual Simulation (`simulate_remove_module`)
-
-1. Scroll to the **Counterfactual Simulation** section.
-2. Click on the **"Simulated Scenario"** tab.
-3. **What to highlight to the audience:**
-   - **Zero Corruption Guarantee:** NexusAct executes `GRAPH.COPY` to create an ephemeral isolated clone (`scen:<uuid>`).
-   - The target module is excised from the clone graph.
-   - **Blast Radius & Path Analysis:**
-     - Computes true *Disappeared Paths* (callers that lost all routes to downstream dependencies).
-     - Computes true *Surviving Paths* (callers that retained alternate surviving routes).
-   - In the temporary copy's `finally` block, the ephemeral graph is deleted. The source graph remains 100% intact and unchanged.
+### Scene 3: Interactive Graph Canvas & Visual Counterfactual Simulation
+1. Switch to the **Graph Canvas** view.
+2. Toggle between **Light Theme** and **Dark Theme** using the theme switch.
+3. Observe the high-contrast visualization:
+   - Central focus on `backend.app.graph.client`.
+   - Directed edges pointing in canonical `DEPENDS_ON` direction.
+   - Distinct node types (Modules, Files, Commits, Contributors).
+   - Smooth zoom and pan controls with passive-wheel safety.
+4. Click on the **"Simulated Scenario"** tab:
+   - **Zero-Corruption Guarantee:** NexusAct cloned the graph via FalkorDB `GRAPH.COPY` to an ephemeral clone (`scen:<uuid>`), excised the module, evaluated path reachability, and deleted the clone. The master graph remained 100% unchanged.
+   - **Blast Radius & Disrupted Paths:** Disrupted dependency routes are highlighted with dashed red edges, while surviving alternate paths glow in green.
 
 ---
 
-### Scene 6: Path Verification & Cryptographic Action Proposal
-
-1. Navigate to the **"Action & Issue Proposal"** tab.
-2. **What to highlight to the audience:**
-   - **Path Verifier:** Audits all traversed paths against FalkorDB, confirming every node, edge, and source file exists. Status: `VERIFIED`.
-   - **Action Proposal:** Generates an actionable issue markdown summary with blast radius and suggested reviewers.
-   - **Cryptographic Binding:** The proposal computes a canonical SHA-256 payload hash.
-   - **Safety First:** If `GITHUB_TOKEN` is not configured, NexusAct provides a safe, non-destructive markdown preview. If configured, external issue submission requires the exact approved hash and embeds a duplicate reconciliation marker (`<!-- GAF-ACTION-MARKER:<hash> -->`).
-
----
-
-### Scene 7: Universal Ask GAF — Multi-Domain Knowledge Discovery
-
-1. In the top navigation bar, click on **"Universal Ask GAF"**.
-2. **What to highlight to the audience:**
-   - **4 Live Approved Connectors:** Hugging Face Hub, OpenAlex Scholarly Graph, Crossref Metadata, and Wikidata. All show real-time health checks.
-   - **Fixed API Base Security:** Connectors use immutable class constants; arbitrary user URLs cannot be fetched.
-3. In the inquiry bar, type:
-   > *"Which organizations publish models related to transformer research?"*
-4. Click **"Investigate"**.
-5. **Observe the Results:**
-   - Universal Discovery Planner selects Hugging Face, OpenAlex, and Wikidata.
-   - Discovers models, creators, papers, and topics with bounded API queries.
-   - Persists all entities idempotently into FalkorDB `nexusact_public`.
-   - Results show exact evidence tags (e.g. `authorships.author`, `tags.dataset`, `claims.P108`).
-   - Every claim features a clickable **Source Record** provenance URL.
-   - Any missing coverage or partial failure is honestly disclosed in the Coverage Limitations box.
+### Scene 4: Public Vulnerability Security Triage (`nexusact_security_triage`)
+1. In the investigation prompt bar, enter:
+   > *"Triage vulnerabilities affecting repository dependencies"*
+2. Click **"Run Investigation"**.
+3. **What to highlight to judges:**
+   - NexusAct inspects declared manifests (`package-lock.json`, `package.json`, `requirements.txt`) in the active repository.
+   - Queries the public **Google OSV database** (`https://api.osv.dev/v1/query`) in real time.
+   - Persists `PackageDependency` and `Vulnerability` nodes in FalkorDB with `[:HAS_VULNERABILITY]` and `[:USES_PACKAGE]` relationships.
+   - Honest uncertainty disclosure: If a package version is ambiguous, or manifests are absent, NexusAct flags `MANIFESTS_UNAVAILABLE` or `NO_MANIFESTS_FOUND` rather than falsely claiming safety.
 
 ---
 
-### Scene 8: AI Ecosystem & Citation Graph Exploration
-
-1. Click on the **"AI Ecosystem"** tab.
-   - Focuses search on models and datasets.
-   - Query: *"Which datasets are documented as used to train open models?"*
-   - Highlights explicit `USES_DATASET` links grounded in metadata tags, strictly avoiding false inferences.
-2. Click on the **"Research & Citations"** tab.
-   - Focuses search on scholarly papers and citation graphs.
-   - Resolves lowercase DOIs across OpenAlex and Crossref to avoid duplicate nodes.
-   - Traverses `CITES` and `AFFILIATED_WITH` relationships to identify academic research clusters.
-
----
+### Scene 5: Isolated Synthetic Fraud Investigation (`nexusact_investigate_fraud`)
+1. In the prompt bar, enter:
+   > *"Investigate suspicious synthetic transfers and explain how accounts are connected"*
+2. Click **"Run Investigation"**.
+3. **What to highlight to judges:**
+   - **Synthetic Graph Isolation:** Operates strictly on `nexusact_fraud_demo`.
+   - **Prominent Disclaimer:** Clearly labeled: *"This investigation operates strictly on synthetic, deterministic demonstration records... No real-world individuals or accounts are represented."*
+   - **Multi-Hop Circular Cycle Detection:** Traverses `(a1)-[:SENDS_TO]->(a2)-[:SENDS_TO]->(a3)-[:SENDS_TO]->(a1)` (hop depth = 3) detecting rapid fund redirection totaling $27,700 within 3 hours.
+   - **Shared Infrastructure Indicator:** Detects `dev:iphone_xyz` shared between `acc:101` and `acc:103`. Honestly classifies shared infrastructure as `MEDIUM` severity risk indicator requiring corroborating transaction proof, not standalone proof of fraud.
+   - **Benign Control Audit:** Audits control accounts `acc:201` and `acc:202`, proving linear retail merchant spending is recognized as `BENIGN_NORMAL` and never misclassified.
 
 ---
 
-### Scene 9: Interactive Graph Explorer & Multi-Hop Path Highlight
-
-1. Click on the **"Dependency Graph"** tab in the Software Graph workspace.
-2. **What to highlight to the audience:**
-   - **Visualized Graph (No Blank Canvas):** Real nodes (rectangles with names) and directed dependency edges (arrows in `DEPENDS_ON` direction).
-   - **Three-Region Layout:**
-     - Left: Upstream callers (dependents).
-     - Center: Target focus module.
-     - Right: Downstream dependencies.
-   - **Interactive Pan & Zoom:** Drag the canvas to pan; use wheel or `+`/`-`/`fit-to-view` buttons.
-   - **Contextual Inspector:** Click on any node to slide open the inspector panel displaying ID, in/out degrees, caller lists, and a "Focus Target" button. Click an edge to inspect its source file and evidence type.
-   - **Multi-Hop Path Glow:** The verified multi-hop relationship path (`A -> B -> C -> D`) is illuminated with a glowing stroke and breadcrumb sequence.
-   - **Theme Switcher:** Click the Sun/Moon toggle in the header. Show seamless contrast transition between clean Light mode (default) and dark mode with high contrast SVG labels and panels.
+### Scene 6: Cryptographic Action Proposal & Safe Internal FalkorDB Persistence
+1. Scroll down to the **Action & Issue Proposal** card.
+2. Observe the proposal generated specifically from the active investigation:
+   - Distinct tailored proposals for Codebase Impact, Security Triage, and Fraud Review.
+   - Includes canonical SHA-256 payload hash and reconciliation markers.
+3. Click **"Save Internal Task"**:
+   - Persists the action in FalkorDB as a structured follow-up item with state `SAVED`.
+   - When `GITHUB_TOKEN` is unset, remote writes remain strictly locked. No accidental or unauthenticated network dispatches occur.
 
 ---
 
-### Scene 10: Security Triage Workflow (OSV-Backed)
+## 3. Demo Closing & Judge Takeaways
 
-1. Submit a security-focused prompt:
-   > *"Triage the known dependency vulnerability in this repository."*
-2. **What to highlight to the audience:**
-   - Agent dynamically selects MCP tool: `nexusact_security_triage`.
-   - Inspects real project manifests (`package.json`, `package-lock.json`, `requirements.txt`).
-   - Queries OSV vulnerability database via public API to match exact or range package versions.
-   - Stores `PackageDependency` and `Vulnerability` nodes in FalkorDB with explicit `HAS_VULNERABILITY` and `USES_PACKAGE` relationships.
-   - Discloses exact severity, advisory source URLs, fixed versions, and consuming internal application modules.
-   - Proposes version-specific remediation plan: `[NexusAct Security Triage] Dependency Vulnerability Remediation Plan`.
-
----
-
-### Scene 11: Synthetic Fraud Investigation & Multi-Hop Cycle Analysis
-
-1. In the investigation inquiry bar, type:
-   > *"Investigate suspicious transfers and explain how the accounts are connected in the synthetic fraud graph."*
-2. **What to highlight to the audience:**
-   - **Domain Isolation:** Operates strictly on `nexusact_fraud_demo` graph in FalkorDB, clearly separated from software repositories.
-   - **Synthetic Disclaimer:** Prominently displays: *"This investigation operates strictly on synthetic, deterministic demonstration records..."*
-   - **Multi-Hop Cypher Traversal:** Detects circular money flow across 3 hops: `acc:101 -> acc:102 -> acc:103 -> acc:101` ($27,700.00 volume).
-   - **Shared Infrastructure Fingerprinting:** Detects `acc:101` and `acc:103` operating concurrently through `dev:iphone_xyz` (`USES_DEVICE`).
-   - **Benign Control Auditing:** Verifies linear retail spending for `acc:201` and `acc:202`, confirming benign controls are NOT falsely flagged as fraud.
-
----
-
-### Scene 12: Gemini LLM Assisted Planning & Safe FalkorDB Internal Persistence
-
-1. **Planner Attribution:**
-   - Shows active planner mode: `Google Gemini (gemini-2.5-flash)` when `GEMINI_API_KEY` is configured, or transparent `Deterministic / Heuristic Fallback` when offline.
-   - Bounded tool budget (maximum 5 tools per investigation) prevents infinite loops.
-2. **Verified Action & Safe FalkorDB Follow-Up:**
-   - If `GITHUB_TOKEN` is unset, external execution is safely locked (`can_execute=false`).
-   - Click **"Save as Internal Follow-Up Task in FalkorDB"**.
-   - Result: Instantly updates action node in FalkorDB with state `SAVED`. The UI renders verified persistence badge: *"Action Persisted Internally (FalkorDB)"*.
-
----
-
-## 3. Video Recording Checklist for Submission
-
-Before recording the 3–5 minute hackathon demo video, verify each item:
-
-- [ ] **Resolution & Audio:** 1080p minimum, clear microphone audio, no background noise.
-- [ ] **Track Mention:** Clearly state the hackathon track: **"Agents That Act on Connected Data"** using **FalkorDB v4.4.1**.
-- [ ] **Connected Data First:** Show that the graph data lives in FalkorDB (e.g. mention Cypher queries and persistent storage).
-- [ ] **Flow Order:**
-  1. Quick introduction of NexusAct and the GraphAction Fabric (GAF) architecture (30s).
-  2. Software Graph: Ingest or select repository, ask natural-language question, show First-Class Investigation Summary (45s).
-  3. Interactive Graph Explorer: Pan/zoom canvas, click node to open slide-over inspector, show multi-hop path glow, toggle Light/Dark theme (45s).
-  4. Real Security Triage: Show OSV dependency vulnerability analysis with fix versions (30s).
-  5. Synthetic Fraud Demo: Show circular transfer ring and shared device cluster in FalkorDB (30s).
-  6. Verified Action: Show evidence-grounded issue proposal and internal FalkorDB task persistence (`SAVED`) (30s).
-  7. Universal GAF (Brief): Show public data search connecting papers and models with source URLs (30s).
-  8. Conclusion: Reiterate hackathon track and graph-native intelligence (15s).
-- [ ] **No False Claims:** Explicitly note that external GitHub actions require an approved token and are safeguarded by human approval.
-
----
-
-## 4. Demonstration Failure & Recovery Scenarios
-
-| Scenario | System Reaction | Demonstration Point |
-|---|---|---|
-| **Invalid GitHub URL** (e.g. `http://...` or embedded credentials) | Rejected at validation boundary with clear error | SSRF protection and security boundary |
-| **Missing Model Credentials** | Switches transparently to deterministic heuristic planner | Resilience: local intelligence never breaks |
-| **FalkorDB Unavailable** | Health API reports `UNHEALTHY` / `NOT_READY` with diagnostics | Honest monitoring; no false green states |
-| **Ambiguous Target** | Returns `AMBIGUOUS` with candidate selection chips | AI safety: never acts on ambiguous intent |
-| **Public Source Partial Outage** | Records other sources, isolates failure in `coverage_limitations` | Partial failure tolerance; no cascading crashes |
-| **Restart Recovery** | Graph data in FalkorDB persists across restarts | Persistent relationship engine verification |
-| **Unresolved Target Module** | Returns `UNRESOLVED` with candidate suggestions | Honest truthfulness; no hallucinated graphs |
-| **Missing GitHub Token** | Disables external write; enables internal FalkorDB save | Truthful state; no fake external execution |
-
-
+1. **Graph-Native Core:** NexusAct does not merely use FalkorDB as a database; it uses FalkorDB's Cypher traversals, multi-hop pathfinding, PageRank centrality, and `GRAPH.COPY` simulation to drive every agent decision.
+2. **Honest AI:** Discloses uncertainties, evidence gaps, and synthetic data disclaimers. Never invents nonexistent edges or owners.
+3. **Safe Action Guardrails:** Every external action proposal is grounded in verified graph evidence, bound by cryptographic hash, and protected by authentication gates.
