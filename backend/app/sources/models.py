@@ -87,6 +87,29 @@ class SourceCapability(BaseModel):
     error_details: Optional[str] = None
 
 
+class SourceSnapshot(BaseModel):
+    """Canonical source-snapshot contract binding an investigation to an exact revision and graph."""
+
+    snapshot_id: str
+    repository_id: str
+    source_type: SourceType
+    canonical_source: str
+    default_branch: Optional[str] = None
+    commit_sha: str
+    working_tree_fingerprint: Optional[str] = None
+    graph_name: str
+    source_checked_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    ingested_at: Optional[str] = None
+    parser_version: str = "ast-gaf-v2.0"
+    ingestion_status: str = "INGESTED"  # INGESTED | PENDING | FAILED
+    module_count: int = 0
+    edge_count: int = 0
+    known_gaps: List[str] = Field(default_factory=list)
+    freshness_status: str = (
+        "FRESH"  # FRESH | UPDATED | STALE_SOURCE_UNAVAILABLE | INGESTION_FAILED | SNAPSHOT_UNRESOLVED
+    )
+
+
 class RepositoryRecord(BaseModel):
     """Metadata record for a registered or ingested repository."""
 
@@ -96,9 +119,14 @@ class RepositoryRecord(BaseModel):
     repo: Optional[str] = None
     source_type: SourceType
     url_or_path: str
+    canonical_source: Optional[str] = None
     graph_name: str
     default_branch: str = "main"
     commit_sha: str = "HEAD"
+    working_tree_fingerprint: Optional[str] = None
+    active_snapshot_id: Optional[str] = None
+    freshness_status: str = "FRESH"
+    source_checked_at: Optional[str] = None
     file_count: int = 0
     module_count: int = 0
     edge_count: int = 0
@@ -110,6 +138,30 @@ class RepositoryRecord(BaseModel):
     known_gaps: List[str] = Field(default_factory=list)
     parser_warnings: List[str] = Field(default_factory=list)
     extra_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    def to_snapshot(self) -> SourceSnapshot:
+        """Constructs a canonical SourceSnapshot from this repository record."""
+        short_sha = (self.commit_sha or "head")[:8]
+        short_fp = (self.working_tree_fingerprint or "clean")[:6]
+        slug = re.sub(r"[^A-Za-z0-9_]", "_", self.id.replace("repo:", "")).strip("_")
+        snap_id = f"snap_{slug}_{short_sha}_{short_fp}"
+
+        return SourceSnapshot(
+            snapshot_id=self.active_snapshot_id or snap_id,
+            repository_id=self.id,
+            source_type=self.source_type,
+            canonical_source=self.url_or_path,
+            default_branch=self.default_branch,
+            commit_sha=self.commit_sha,
+            working_tree_fingerprint=self.working_tree_fingerprint,
+            graph_name=self.graph_name,
+            source_checked_at=self.source_checked_at or datetime.now(timezone.utc).isoformat(),
+            ingested_at=self.last_ingested_at,
+            module_count=self.module_count,
+            edge_count=self.edge_count,
+            known_gaps=list(self.known_gaps),
+            freshness_status=self.freshness_status,
+        )
 
 
 class RegisterRepositoryRequest(BaseModel):
@@ -128,6 +180,9 @@ class SourceMetadataOutput(BaseModel):
     repository_name: str
     graph_name: str
     commit_sha: str
+    working_tree_fingerprint: Optional[str] = None
+    active_snapshot_id: Optional[str] = None
+    freshness_status: str = "FRESH"
     sources: List[SourceCapability]
     known_gaps: List[str]
     disclaimer: str = (

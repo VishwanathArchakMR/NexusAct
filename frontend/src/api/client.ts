@@ -17,6 +17,8 @@ import type {
   SimulationResult,
   RepositoryRecord,
   SourceMetadataOutput,
+  SourceSnapshot,
+  FileContentResponse,
 } from "../types/investigation";
 
 export class ApiError extends Error {
@@ -136,11 +138,38 @@ export async function fetchModules(query?: string, limit = 50, repoId?: string):
 }
 
 // Investigation & Agent Endpoints
+export async function fetchRepositorySnapshot(
+  repoId: string,
+  refresh = false
+): Promise<SourceSnapshot> {
+  const url = `${config.apiBaseUrl}/api/v1/ingest/snapshot/${encodeURIComponent(repoId)}?refresh=${refresh}`;
+  const res = await fetch(url);
+  return handleResponse<SourceSnapshot>(res, "Failed to load repository snapshot");
+}
+
+export async function fetchFileContent(
+  repoId: string,
+  filePath: string,
+  startLine = 1,
+  endLine = 200
+): Promise<FileContentResponse> {
+  const params = new URLSearchParams({
+    repo_id: repoId,
+    file_path: filePath,
+    start_line: startLine.toString(),
+    end_line: endLine.toString(),
+  });
+  const url = `${config.apiBaseUrl}/api/v1/ingest/file-content?${params.toString()}`;
+  const res = await fetch(url);
+  return handleResponse<FileContentResponse>(res, "Failed to fetch file content");
+}
+
 export async function runInvestigation(
   question: string,
   moduleIdentifier?: string | null,
   repoId?: string | null,
-  maxBudget = 5
+  maxBudget = 5,
+  investigationMode?: string | null
 ): Promise<InvestigationReport> {
   const url = `${config.apiBaseUrl}/api/v1/investigate`;
   const res = await fetch(url, {
@@ -151,6 +180,7 @@ export async function runInvestigation(
       module_identifier: moduleIdentifier || null,
       repo_id: repoId || null,
       max_budget: maxBudget,
+      investigation_mode: investigationMode || null,
     }),
   });
   return handleResponse<InvestigationReport>(res, "Investigation request failed");

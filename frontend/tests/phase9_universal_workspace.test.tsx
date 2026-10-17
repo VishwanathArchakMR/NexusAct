@@ -114,6 +114,28 @@ vi.mock("../src/api/client", () => ({
   }),
   fetchModules: vi.fn().mockResolvedValue([]),
   fetchSubgraph: vi.fn().mockResolvedValue({ nodes: [], edges: [], total_nodes: 0, total_edges: 0 }),
+  fetchRepositorySnapshot: vi.fn().mockResolvedValue({
+    snapshot_id: "snap_test",
+    repository_id: "repo:local_nexusact",
+    source_type: "local",
+    canonical_source: "C:\\NexusAct",
+    default_branch: "master",
+    commit_sha: "6b00a0020c89fe2bb07ec7844fa64af7ce0c8d28",
+    working_tree_fingerprint: "test_fp",
+    graph_name: "nexusact_main",
+    source_checked_at: "2026-10-17T00:00:00Z",
+    freshness_status: "FRESH",
+  }),
+  fetchFileContent: vi.fn().mockResolvedValue({
+    file_path: "backend/app/main.py",
+    repository_id: "repo:local_nexusact",
+    commit_sha: "6b00a002",
+    start_line: 1,
+    end_line: 20,
+    total_lines: 100,
+    content: "# test code",
+    language: "python",
+  }),
 }));
 
 describe("Phase 10 Universal GAF Input-Driven Navigation and Workspace", () => {

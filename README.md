@@ -10,16 +10,16 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-118%2F118%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-131%2F131%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-13%2F13%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
-> **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md)  
-> **Phase 14 Acceptance Matrix:** [`docs/PHASE14_ACCEPTANCE.md`](docs/PHASE14_ACCEPTANCE.md)  
+> **Phase 15 Final Report:** [`docs/PHASE15_FINAL_REPORT.md`](docs/PHASE15_FINAL_REPORT.md)  
+> **Phase 15 Acceptance Matrix:** [`docs/PHASE15_ACCEPTANCE.md`](docs/PHASE15_ACCEPTANCE.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
-> **Phase 13 Completion Report:** [`docs/PHASE13_COMPLETION_REPORT.md`](docs/PHASE13_COMPLETION_REPORT.md)  
+> **Phase 14 Final Report:** [`docs/PHASE14_FINAL_REPORT.md`](docs/PHASE14_FINAL_REPORT.md)  
 
 ---
 

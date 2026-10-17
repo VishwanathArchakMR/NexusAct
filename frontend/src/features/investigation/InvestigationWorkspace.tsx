@@ -6,6 +6,8 @@ import type {
   IngestionReport,
   RepositoryRecord,
   SourceMetadataOutput,
+  SourceSnapshot,
+  FileContentResponse,
 } from "../../types/investigation";
 import {
   fetchModules,
@@ -16,6 +18,8 @@ import {
   cloneAndIngest,
   refreshRepository,
   fetchSourceMetadata,
+  fetchRepositorySnapshot,
+  fetchFileContent,
 } from "../../api/client";
 import { GraphCanvas } from "./GraphCanvas";
 import { AgentTrace } from "./AgentTrace";
@@ -33,18 +37,28 @@ import {
   Play,
   RotateCw,
   FolderGit2,
-  Globe,
   AlertTriangle,
   HelpCircle,
   Plus,
   Network,
   Compass,
+  Code,
+  ShieldAlert,
+  DollarSign,
+  CheckCircle2,
+  FileCode,
 } from "lucide-react";
 
 export interface InvestigationWorkspaceProps {
   selectedRepoId?: string;
   onSelectRepoId?: (id: string) => void;
 }
+
+export type InvestigationMode =
+  | "codebase_walkthrough"
+  | "change_impact"
+  | "security_triage"
+  | "fraud_demo";
 
 export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   selectedRepoId: propRepoId,
@@ -54,12 +68,17 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   const [repositories, setRepositories] = useState<RepositoryRecord[]>([]);
   const [selectedRepoId, setSelectedRepoId] = useState<string>(propRepoId || "repo:local_nexusact");
   const [sourceMetadata, setSourceMetadata] = useState<SourceMetadataOutput | null>(null);
+  const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null);
+  const [isCheckingFreshness, setIsCheckingFreshness] = useState<boolean>(false);
 
   const [prevPropRepoId, setPrevPropRepoId] = useState(propRepoId);
   if (propRepoId && propRepoId !== prevPropRepoId) {
     setPrevPropRepoId(propRepoId);
     setSelectedRepoId(propRepoId);
   }
+
+  // Investigation Mode
+  const [investigationMode, setInvestigationMode] = useState<InvestigationMode>("codebase_walkthrough");
 
   // Onboard repository modal state
   const [showOnboardModal, setShowOnboardModal] = useState<boolean>(false);
@@ -73,17 +92,32 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   const [modules, setModules] = useState<ModuleSuggestion[]>([]);
   const [selectedModule, setSelectedModule] = useState<string>("");
   const [question, setQuestion] = useState<string>(
-    "What might be affected if I modify the graph client, and who has relevant experience?"
+    "How do API requests flow into the graph storage layer, and what symbols are defined?"
   );
 
   const [activeTab, setActiveTab] = useState<
-    "graph" | "trace" | "reviewers" | "simulation" | "neighborhood" | "provenance" | "action"
+    | "graph"
+    | "code"
+    | "security"
+    | "fraud"
+    | "simulation"
+    | "reviewers"
+    | "trace"
+    | "neighborhood"
+    | "provenance"
+    | "action"
   >("graph");
   const [simulationView, setSimulationView] = useState<"baseline" | "scenario">("baseline");
 
   const [report, setReport] = useState<InvestigationReport | null>(null);
   const [subgraph, setSubgraph] = useState<SubgraphResponse | null>(null);
   const [ingestionInfo, setIngestionInfo] = useState<IngestionReport | null>(null);
+
+  // Code Inspector state
+  const [codeFilePath, setCodeFilePath] = useState<string>("backend/app/main.py");
+  const [codeData, setCodeData] = useState<FileContentResponse | null>(null);
+  const [isLoadingCode, setIsLoadingCode] = useState<boolean>(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -98,6 +132,18 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       }
     } catch (e) {
       console.warn("Could not load repositories:", e);
+    }
+  }, []);
+
+  const loadSnapshot = React.useCallback(async (repoId: string, refresh = false) => {
+    try {
+      setIsCheckingFreshness(true);
+      const snap = await fetchRepositorySnapshot(repoId, refresh);
+      setSnapshot(snap);
+    } catch (e) {
+      console.warn("Could not load repository snapshot:", e);
+    } finally {
+      setIsCheckingFreshness(false);
     }
   }, []);
 
@@ -130,6 +176,20 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
     }
   }, [selectedRepoId]);
 
+  const loadCode = React.useCallback(async (repoId: string, filePath: string) => {
+    try {
+      setIsLoadingCode(true);
+      setCodeError(null);
+      const data = await fetchFileContent(repoId, filePath, 1, 150);
+      setCodeData(data);
+    } catch (e) {
+      setCodeError(e instanceof Error ? e.message : "Failed to load file contents");
+      setCodeData(null);
+    } finally {
+      setIsLoadingCode(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => { await loadRepositories(); })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,14 +202,18 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       setError(null);
       (async () => {
         await Promise.all([
+          loadSnapshot(selectedRepoId),
           loadRepoMetadata(selectedRepoId),
           loadModules(undefined, selectedRepoId),
           loadGraph(undefined, selectedRepoId),
         ]);
+        if (codeFilePath) {
+          loadCode(selectedRepoId, codeFilePath);
+        }
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepoId, loadRepoMetadata, loadModules, loadGraph]);
+  }, [selectedRepoId, loadSnapshot, loadRepoMetadata, loadModules, loadGraph, loadCode]);
 
   const handleRefresh = async () => {
     if (!selectedRepoId) return;
@@ -164,6 +228,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       }
       setIngestionInfo(res);
       await loadRepositories();
+      await loadSnapshot(selectedRepoId, true);
       await loadRepoMetadata(selectedRepoId);
       await loadModules(undefined, selectedRepoId);
       await loadGraph(undefined, selectedRepoId);
@@ -171,6 +236,25 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       setError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleModeChange = (mode: InvestigationMode) => {
+    setInvestigationMode(mode);
+    setError(null);
+
+    if (mode === "codebase_walkthrough") {
+      setQuestion("How do API requests flow into the graph storage layer, and what symbols are defined?");
+      setActiveTab("graph");
+    } else if (mode === "change_impact") {
+      setQuestion("What might be affected if I modify the graph client, and who has relevant experience?");
+      setActiveTab("graph");
+    } else if (mode === "security_triage") {
+      setQuestion("Check dependencies for security advisories and trace if vulnerable packages are reachable from our code.");
+      setActiveTab("security");
+    } else if (mode === "fraud_demo") {
+      setQuestion("Detect circular money movement loops and shared device fraud indicators across accounts.");
+      setActiveTab("fraud");
     }
   };
 
@@ -213,12 +297,25 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         question,
         target.trim() ? target.trim() : null,
         selectedRepoId,
-        5
+        5,
+        investigationMode
       );
       setReport(rep);
       if (rep.target_module_id) {
         setSelectedModule(rep.target_module_id);
         await loadGraph(rep.target_module_id, selectedRepoId);
+      }
+      if (rep.source_snapshot) {
+        setSnapshot(rep.source_snapshot);
+      }
+
+      // Auto-switch to corresponding tab
+      if (rep.security_triage_result || investigationMode === "security_triage") {
+        setActiveTab("security");
+      } else if (rep.fraud_result || investigationMode === "fraud_demo") {
+        setActiveTab("fraud");
+      } else if (rep.simulation_result) {
+        setActiveTab("graph");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Investigation failed");
@@ -266,8 +363,8 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
   }, [report]);
 
   return (
-    <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "1.5rem 1rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      {/* Repository Scope & Onboarding Banner */}
+    <div style={{ maxWidth: "1320px", margin: "0 auto", padding: "1.5rem 1rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {/* ── Top Canonical Source & Freshness Bar ── */}
       <div
         style={{
           backgroundColor: "var(--bg-card)",
@@ -318,6 +415,80 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             ))}
           </select>
 
+          {/* Freshness Badge */}
+          {snapshot && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  fontSize: "0.74rem",
+                  fontWeight: 700,
+                  padding: "0.2rem 0.6rem",
+                  borderRadius: "20px",
+                  backgroundColor:
+                    snapshot.freshness_status === "FRESH"
+                      ? "#dcfce7"
+                      : snapshot.freshness_status === "UPDATED"
+                      ? "#dbeafe"
+                      : "#fef3c7",
+                  color:
+                    snapshot.freshness_status === "FRESH"
+                      ? "#15803d"
+                      : snapshot.freshness_status === "UPDATED"
+                      ? "#1d4ed8"
+                      : "#b45309",
+                  border: `1px solid ${
+                    snapshot.freshness_status === "FRESH"
+                      ? "#86efac"
+                      : snapshot.freshness_status === "UPDATED"
+                      ? "#93c5fd"
+                      : "#fde68a"
+                  }`,
+                }}
+              >
+                {snapshot.freshness_status === "FRESH" ? (
+                  <CheckCircle2 size={13} />
+                ) : snapshot.freshness_status === "UPDATED" ? (
+                  <RotateCw size={13} />
+                ) : (
+                  <AlertTriangle size={13} />
+                )}
+                {snapshot.freshness_status}
+              </span>
+
+              {snapshot.working_tree_fingerprint && (
+                <span
+                  style={{
+                    fontSize: "0.72rem",
+                    padding: "0.2rem 0.5rem",
+                    borderRadius: "4px",
+                    backgroundColor: "var(--bg-muted)",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  title="Deterministic SHA-256 fingerprint of repository working-tree source files"
+                >
+                  fp:{snapshot.working_tree_fingerprint.slice(0, 10)}
+                </span>
+              )}
+
+              <span
+                style={{
+                  fontSize: "0.72rem",
+                  padding: "0.2rem 0.5rem",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-muted)",
+                  color: "var(--text-secondary)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                rev:{snapshot.commit_sha.slice(0, 8)}
+              </span>
+            </div>
+          )}
+
           {activeRepo && (
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
               <span style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-muted)", fontFamily: "var(--font-mono)" }}>
@@ -331,9 +502,31 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <button
+            onClick={() => loadSnapshot(selectedRepoId, true)}
+            disabled={isCheckingFreshness}
+            title="Check upstream git freshness and local fingerprint"
+            style={{
+              padding: "0.45rem 0.85rem",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              borderRadius: "6px",
+              backgroundColor: "var(--bg-muted)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              cursor: "pointer",
+            }}
+          >
+            <RotateCw size={13} style={{ animation: isCheckingFreshness ? "spin 1.5s linear infinite" : undefined }} />
+            {isCheckingFreshness ? "Checking..." : "Verify Freshness"}
+          </button>
+
+          <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            title="Refresh repository to latest commit"
+            title="Re-ingest repository to latest revision"
             style={{
               padding: "0.45rem 0.85rem",
               fontSize: "0.78rem",
@@ -349,7 +542,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             }}
           >
             <RotateCw size={13} style={{ animation: isRefreshing ? "spin 1.5s linear infinite" : undefined }} />
-            {isRefreshing ? "Refreshing..." : "Refresh Revision"}
+            {isRefreshing ? "Refreshing..." : "Re-Ingest"}
           </button>
 
           <button
@@ -369,8 +562,161 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             }}
           >
             <Plus size={14} />
-            Onboard Repository
+            Onboard Repo
           </button>
+        </div>
+      </div>
+
+      {/* ── Three Application Workflows Mode Bar ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: "0.75rem",
+        }}
+      >
+        {/* Workflow 1: Codebase Walkthrough */}
+        <div
+          onClick={() => handleModeChange("codebase_walkthrough")}
+          style={{
+            padding: "0.85rem 1rem",
+            borderRadius: "8px",
+            border: `2px solid ${
+              investigationMode === "codebase_walkthrough"
+                ? "var(--accent-blue)"
+                : "var(--border-subtle)"
+            }`,
+            backgroundColor:
+              investigationMode === "codebase_walkthrough"
+                ? "var(--accent-blue-subtle)"
+                : "var(--bg-card)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.25rem",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, fontSize: "0.86rem", color: "var(--text-primary)" }}>
+              <Code size={16} color="var(--accent-blue)" />
+              Codebase Walkthrough
+            </span>
+            {investigationMode === "codebase_walkthrough" && (
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--accent-blue)" }}>ACTIVE</span>
+            )}
+          </div>
+          <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)" }}>
+            Explore request flows, architecture, symbol references, and live code preview.
+          </span>
+        </div>
+
+        {/* Workflow 2: Change Impact & Reviewers */}
+        <div
+          onClick={() => handleModeChange("change_impact")}
+          style={{
+            padding: "0.85rem 1rem",
+            borderRadius: "8px",
+            border: `2px solid ${
+              investigationMode === "change_impact"
+                ? "#6366f1"
+                : "var(--border-subtle)"
+            }`,
+            backgroundColor:
+              investigationMode === "change_impact"
+                ? "rgba(99, 102, 241, 0.08)"
+                : "var(--bg-card)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.25rem",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, fontSize: "0.86rem", color: "var(--text-primary)" }}>
+              <Layers size={16} color="#6366f1" />
+              Change Impact & Reviewers
+            </span>
+            {investigationMode === "change_impact" && (
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#6366f1" }}>ACTIVE</span>
+            )}
+          </div>
+          <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)" }}>
+            Trace blast radius, counterfactual disruption in cloned graph, and commit owner discovery.
+          </span>
+        </div>
+
+        {/* Workflow 3: Security Triage (OSV) */}
+        <div
+          onClick={() => handleModeChange("security_triage")}
+          style={{
+            padding: "0.85rem 1rem",
+            borderRadius: "8px",
+            border: `2px solid ${
+              investigationMode === "security_triage"
+                ? "#ef4444"
+                : "var(--border-subtle)"
+            }`,
+            backgroundColor:
+              investigationMode === "security_triage"
+                ? "rgba(239, 68, 68, 0.08)"
+                : "var(--bg-card)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.25rem",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, fontSize: "0.86rem", color: "var(--text-primary)" }}>
+              <ShieldAlert size={16} color="#ef4444" />
+              Security Triage (OSV)
+            </span>
+            {investigationMode === "security_triage" && (
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#ef4444" }}>ACTIVE</span>
+            )}
+          </div>
+          <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)" }}>
+            Inspect dependency manifests against OSV.dev advisories and trace module reachability.
+          </span>
+        </div>
+
+        {/* Workflow 4: Fraud Pattern Demo */}
+        <div
+          onClick={() => handleModeChange("fraud_demo")}
+          style={{
+            padding: "0.85rem 1rem",
+            borderRadius: "8px",
+            border: `2px solid ${
+              investigationMode === "fraud_demo"
+                ? "#d97706"
+                : "var(--border-subtle)"
+            }`,
+            backgroundColor:
+              investigationMode === "fraud_demo"
+                ? "rgba(217, 119, 6, 0.08)"
+                : "var(--bg-card)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.25rem",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, fontSize: "0.86rem", color: "var(--text-primary)" }}>
+              <DollarSign size={16} color="#d97706" />
+              Fraud Topology Demo
+            </span>
+            {investigationMode === "fraud_demo" && (
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#d97706" }}>ACTIVE</span>
+            )}
+          </div>
+          <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)" }}>
+            Synthetic financial graph: circular routing cycles, shared devices, and benign controls.
+          </span>
         </div>
       </div>
 
@@ -398,7 +744,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
               <li key={`gap-${idx}`}>{gap}</li>
             ))}
             {activeRepo.parser_warnings?.map((warn, idx) => (
-              <li key={`warn-${idx}`}>Parser warning: {warn}</li>
+              <li key={`warn-${idx}`}>{warn}</li>
             ))}
           </ul>
         </div>
@@ -413,31 +759,31 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 1000,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "1rem",
+            zIndex: 1000,
           }}
         >
           <div
             style={{
               backgroundColor: "var(--bg-card)",
-              borderRadius: "12px",
-              padding: "1.5rem",
+              borderRadius: "10px",
+              border: "1px solid var(--border-subtle)",
               width: "100%",
               maxWidth: "520px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+              padding: "1.5rem",
+              boxShadow: "var(--shadow-lg)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                Onboard Engineering Repository
+              <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                Onboard Repository into NexusAct
               </h3>
               <button
                 onClick={() => setShowOnboardModal(false)}
-                style={{ background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "var(--text-secondary)" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)" }}
               >
                 ✕
               </button>
@@ -446,7 +792,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             <form onSubmit={handleOnboardSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
                 <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.4rem" }}>
-                  Source Method
+                  Source Origin
                 </label>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
@@ -455,21 +801,15 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                     style={{
                       flex: 1,
                       padding: "0.5rem",
-                      fontSize: "0.8rem",
-                      fontWeight: 600,
                       borderRadius: "6px",
-                      border: "1px solid",
-                      borderColor: onboardType === "github" ? "var(--accent-blue)" : "var(--border-subtle)",
-                      backgroundColor: onboardType === "github" ? "#eff6ff" : "#ffffff",
+                      border: `1px solid ${onboardType === "github" ? "var(--accent-blue)" : "var(--border-subtle)"}`,
+                      backgroundColor: onboardType === "github" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
                       color: onboardType === "github" ? "var(--accent-blue)" : "var(--text-secondary)",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
                     }}
                   >
-                    <Globe size={14} />
                     Public GitHub URL
                   </button>
                   <button
@@ -478,22 +818,16 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                     style={{
                       flex: 1,
                       padding: "0.5rem",
-                      fontSize: "0.8rem",
-                      fontWeight: 600,
                       borderRadius: "6px",
-                      border: "1px solid",
-                      borderColor: onboardType === "local" ? "var(--accent-blue)" : "var(--border-subtle)",
-                      backgroundColor: onboardType === "local" ? "#eff6ff" : "#ffffff",
+                      border: `1px solid ${onboardType === "local" ? "var(--accent-blue)" : "var(--border-subtle)"}`,
+                      backgroundColor: onboardType === "local" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
                       color: onboardType === "local" ? "var(--accent-blue)" : "var(--text-secondary)",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
                     }}
                   >
-                    <FolderGit2 size={14} />
-                    Local Git Path
+                    Local Filesystem Path
                   </button>
                 </div>
               </div>
@@ -596,7 +930,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Investigation Controls Card */}
+      {/* ── Investigation Controls Card ── */}
       <div
         style={{
           backgroundColor: "var(--bg-card)",
@@ -609,10 +943,18 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         <div style={{ marginBottom: "1rem" }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <Sparkles size={18} color="var(--accent-blue)" />
-            Dynamic Graph Intelligence Investigation
+            Dynamic Graph Intelligence Investigation: {
+              investigationMode === "codebase_walkthrough"
+                ? "Codebase Walkthrough & Symbol Inspection"
+                : investigationMode === "change_impact"
+                ? "Dynamic Graph Impact & Reviewer Analysis"
+                : investigationMode === "security_triage"
+                ? "OSV Vulnerability Triage & Reachability Trace"
+                : "Synthetic Financial Graph Fraud Topology"
+            }
           </h2>
           <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: "0.2rem" }}>
-            Submit an engineering question in natural language. NexusAct resolves targets, discovers available evidence, and plans MCP tool execution dynamically.
+            NexusAct binds every investigation to an authoritative SourceSnapshot, verifies topological paths in FalkorDB, and executes adaptive MCP tools.
           </p>
         </div>
 
@@ -642,7 +984,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           {/* Investigation Question Prompt */}
           <div>
             <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.3rem" }}>
-              Natural-Language Engineering Question
+              Natural-Language Investigation Question
             </label>
             <input
               type="text"
@@ -661,10 +1003,10 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             />
           </div>
 
-          {/* Optional Target Module Selector */}
+          {/* Target Module Selector */}
           <div>
             <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.3rem" }}>
-              Target Module (Optional)
+              Target Focus (Optional)
             </label>
             <select
               value={selectedModule}
@@ -748,55 +1090,6 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#92400e", fontWeight: 700, fontSize: "0.88rem" }}>
             <HelpCircle size={18} color="#d97706" />
-            Ambiguous Target Detected — Please Clarify
-          </div>
-          <p style={{ fontSize: "0.82rem", color: "#78350f", margin: "0.4rem 0 0.8rem 0" }}>
-            {report.summary}
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-            {report.ambiguity_candidates?.map((c) => (
-              <button
-                key={c.module_id}
-                onClick={() => {
-                  setSelectedModule(c.module_id);
-                  handleInvestigate(c.module_id);
-                }}
-                style={{
-                  padding: "0.4rem 0.75rem",
-                  fontSize: "0.78rem",
-                  borderRadius: "6px",
-                  border: "1px solid #d97706",
-                  backgroundColor: "var(--bg-card)",
-                  color: "#d97706",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.3rem",
-                }}
-              >
-                <span>{c.module_name}</span>
-                <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>({c.match_type})</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Unresolved Limitation Banner */}
-      {report?.status === "UNRESOLVED" && (
-        <div
-          style={{
-            backgroundColor: "#fffbeb",
-            borderRadius: "8px",
-            border: "1px solid #fde68a",
-            padding: "1rem 1.25rem",
-            color: "#92400e",
-            fontSize: "0.82rem",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "#92400e", marginBottom: "0.3rem" }}>
-            <AlertTriangle size={16} color="#d97706" />
             Target Unresolved in Selected Repository Graph
           </div>
           <p style={{ margin: "0.2rem 0 0.5rem 0" }}>{report.unresolved_reason || report.summary}</p>
@@ -849,7 +1142,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         </div>
       )}
 
-      {/* First-Class Investigation Summary Card (Scoped strictly to current repository) */}
+      {/* ── Investigation Summary Card ── */}
       {report && report.status === "COMPLETED" && (!report.repository_id || report.repository_id === selectedRepoId) && (
         <div
           style={{
@@ -909,20 +1202,20 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                     {report.verification.status}
                   </span>
                 )}
-                {report.is_heuristic_fallback && (
+                {report.investigation_mode && (
                   <span
                     style={{
                       fontSize: "0.68rem",
                       fontWeight: 600,
                       padding: "0.15rem 0.45rem",
                       borderRadius: "4px",
-                      backgroundColor: "var(--bg-muted)",
-                      color: "var(--text-secondary)",
-                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--accent-blue-subtle)",
+                      color: "var(--accent-blue)",
+                      border: "1px solid var(--border-focus)",
+                      textTransform: "uppercase",
                     }}
-                    title="Adaptive MCP tool sequence executed (deterministic tool planning)"
                   >
-                    MCP Adaptive Plan
+                    {report.investigation_mode.replace("_", " ")}
                   </span>
                 )}
               </div>
@@ -930,11 +1223,13 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 <span>Repo: <strong>{report.repository_id || selectedRepoId}</strong></span>
                 <span>Graph: <strong>{report.graph_name || activeRepo?.graph_name}</strong></span>
                 <span>Revision: <strong style={{ fontFamily: "var(--font-mono)" }}>{report.commit_sha?.slice(0, 8) || activeRepo?.commit_sha?.slice(0, 8) || "HEAD"}</strong></span>
-                <span>Question: <em>"{report.question}"</em></span>
+                {report.working_tree_fingerprint && (
+                  <span>Fingerprint: <strong style={{ fontFamily: "var(--font-mono)" }}>{report.working_tree_fingerprint.slice(0, 8)}</strong></span>
+                )}
               </div>
             </div>
 
-            {/* Quick Tab Switch Buttons */}
+            {/* Quick Switch Buttons */}
             <div style={{ display: "flex", gap: "0.4rem" }}>
               <button
                 onClick={() => setActiveTab("graph")}
@@ -949,156 +1244,132 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                   cursor: "pointer",
                 }}
               >
-                Graph Canvas
+                Graph View
               </button>
+              {report.security_triage_result && (
+                <button
+                  onClick={() => setActiveTab("security")}
+                  style={{
+                    padding: "0.35rem 0.65rem",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    borderRadius: "5px",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: activeTab === "security" ? "#fee2e2" : "var(--bg-primary)",
+                    color: activeTab === "security" ? "#b91c1c" : "var(--text-secondary)",
+                    cursor: "pointer",
+                  }}
+                >
+                  OSV Advisories ({report.security_triage_result.total_vulnerabilities_count})
+                </button>
+              )}
+              {report.fraud_result && (
+                <button
+                  onClick={() => setActiveTab("fraud")}
+                  style={{
+                    padding: "0.35rem 0.65rem",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    borderRadius: "5px",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: activeTab === "fraud" ? "#fef3c7" : "var(--bg-primary)",
+                    color: activeTab === "fraud" ? "#b45309" : "var(--text-secondary)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Fraud Cycles
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab("action")}
                 style={{
-                  padding: "0.35rem 0.75rem",
+                  padding: "0.35rem 0.65rem",
                   fontSize: "0.74rem",
                   fontWeight: 600,
                   borderRadius: "5px",
-                  border: "none",
-                  backgroundColor: "var(--accent-blue)",
-                  color: "#ffffff",
+                  border: "1px solid var(--border-subtle)",
+                  backgroundColor: activeTab === "action" ? "var(--accent-blue-subtle)" : "var(--bg-primary)",
+                  color: activeTab === "action" ? "var(--accent-blue)" : "var(--text-secondary)",
                   cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.3rem",
                 }}
               >
-                Verified Action →
+                Verified Action
               </button>
             </div>
           </div>
 
-          {/* Metrics Strip */}
+          {/* Key Findings Metrics Grid */}
           <div
             style={{
-              padding: "0.6rem 1.25rem",
-              backgroundColor: "var(--bg-primary)",
-              borderBottom: "1px solid var(--border-subtle)",
+              padding: "1rem 1.25rem",
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-              gap: "0.75rem",
-              fontSize: "0.78rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: "1rem",
+              borderBottom: "1px solid var(--border-subtle)",
+              backgroundColor: "var(--bg-card)",
             }}
           >
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>TOOLS EXECUTED</span>
-              <strong style={{ fontSize: "0.95rem", color: "var(--text-primary)" }}>{report.budget_used}</strong>
-            </div>
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>UPSTREAM CALLERS</span>
-              <strong style={{ fontSize: "0.95rem", color: "var(--accent-blue)" }}>{report.impact_result?.total_impacted_count ?? 0}</strong>
-            </div>
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>DISRUPTED PATHS</span>
-              <strong style={{ fontSize: "0.95rem", color: "#ef4444" }}>{report.simulation_result?.disappeared_paths_count ?? 0}</strong>
-            </div>
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>SURVIVING PATHS</span>
-              <strong style={{ fontSize: "0.95rem", color: "#10b981" }}>{report.simulation_result?.surviving_paths_count ?? 0}</strong>
-            </div>
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>BLAST RADIUS</span>
-              <strong style={{ fontSize: "0.95rem", color: "var(--text-primary)" }}>
-                {report.simulation_result ? `${(report.simulation_result.blast_radius_score * 100).toFixed(1)}%` : "0.0%"}
-              </strong>
-            </div>
-            <div>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem", display: "block" }}>LEAD REVIEWER</span>
-              <strong style={{ fontSize: "0.9rem", color: "var(--text-primary)" }}>
-                {report.reviewer_result?.candidates[0]?.name || "None designated"}
-              </strong>
-            </div>
-          </div>
-
-          {/* Summary & Findings Section */}
-          <div style={{ padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-            <p style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: 1.55 }}>
-              {report.summary}
-            </p>
-
-            {/* Approach: Tool Decision Trace Pills */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
-              <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)" }}>Tool Approach:</span>
-              {report.steps.map((st) => (
-                <span
-                  key={st.step_number}
-                  style={{
-                    fontSize: "0.7rem",
-                    padding: "0.15rem 0.45rem",
-                    borderRadius: "4px",
-                    backgroundColor: "var(--bg-secondary)",
-                    border: "1px solid var(--border-subtle)",
-                    color: "var(--text-secondary)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  #{st.step_number} {st.tool_name.replace(/^nexusact_/, "")}
-                </span>
-              ))}
+            {/* Metric 1: Dependent Callers */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
+                Dependent Callers
+              </span>
+              <span style={{ fontSize: "1.35rem", fontWeight: 700, color: "var(--accent-blue)" }}>
+                {report.impact_result?.total_impacted_count ?? 0}
+              </span>
+              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+                Up to {report.impact_result?.max_depth ?? 0} hops traversal
+              </span>
             </div>
 
-            {/* Verified Multi-Hop Path Highlight if available */}
-            {activePathNodes.length >= 2 && (
-              <div
-                style={{
-                  marginTop: "0.4rem",
-                  padding: "0.5rem 0.75rem",
-                  backgroundColor: "var(--accent-blue-subtle)",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border-focus)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  fontSize: "0.76rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <strong style={{ color: "var(--accent-blue)" }}>
-                  {activePathNodes.length - 1 === 1
-                    ? "Direct Relationship (1-hop path):"
-                    : `Multi-Hop Graph Path (${activePathNodes.length - 1} hops):`}
-                </strong>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", flexWrap: "wrap" }}>
-                  {activePathNodes.map((pNode, idx) => (
-                    <React.Fragment key={pNode}>
-                      <span
-                        style={{
-                          backgroundColor: "var(--bg-card)",
-                          border: "1px solid var(--border-subtle)",
-                          borderRadius: "4px",
-                          padding: "0.15rem 0.4rem",
-                          fontWeight: 600,
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "0.72rem",
-                        }}
-                      >
-                        {pNode.replace(/^mod:/, "")}
-                      </span>
-                      {idx < activePathNodes.length - 1 && <span>→</span>}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Metric 2: Blast Radius */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
+                Topological Blast Radius
+              </span>
+              <span style={{ fontSize: "1.35rem", fontWeight: 700, color: sim && sim.baseline_paths_count > 0 ? (sim.blast_radius_score > 0.3 ? "#ef4444" : "#10b981") : "var(--text-secondary)" }}>
+                {sim && sim.baseline_paths_count > 0 ? (sim.blast_radius_score * 100).toFixed(0) + "%" : "N/A"}
+              </span>
+              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+                {sim?.baseline_paths_count ?? 0} baseline dependency paths
+              </span>
+            </div>
 
-            {/* Disclaimer on Structural vs Runtime Evidence */}
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", marginTop: "0.2rem" }}>
-              * Evidence derived from static AST dependency topology, commit history, and counterfactual simulation in FalkorDB. Structural impact predicts call boundaries; runtime testing validates functional behavior.
+            {/* Metric 3: Lead Contributors */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
+                Lead Contributors
+              </span>
+              <span style={{ fontSize: "1.35rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                {report.reviewer_result?.candidates?.length ?? 0}
+              </span>
+              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+                {report.reviewer_result?.candidates?.[0]?.name || "No authors recorded"}
+              </span>
+            </div>
+
+            {/* Metric 4: MCP Tool Sequence */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
+                MCP Execution Budget
+              </span>
+              <span style={{ fontSize: "1.35rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                {report.budget_used} / {report.budget_used + report.budget_remaining}
+              </span>
+              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+                {report.steps.length} deterministic tools planned
+              </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Tabs Navigation */}
+      {/* ── Workspace Navigation Tabs ── */}
       <div
         style={{
           display: "flex",
           borderBottom: "1px solid var(--border-subtle)",
-          gap: "0.5rem",
+          gap: "0.25rem",
           overflowX: "auto",
         }}
       >
@@ -1120,8 +1391,75 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           }}
         >
           <Layers size={14} />
-          Dependency Graph
+          Graph Explorer
         </button>
+
+        <button
+          onClick={() => setActiveTab("code")}
+          style={{
+            padding: "0.55rem 1rem",
+            fontSize: "0.82rem",
+            fontWeight: 600,
+            border: "none",
+            borderBottom: activeTab === "code" ? "2px solid var(--accent-blue)" : "2px solid transparent",
+            backgroundColor: "transparent",
+            color: activeTab === "code" ? "var(--accent-blue)" : "var(--text-secondary)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <FileCode size={14} />
+          Code Inspector
+        </button>
+
+        {(investigationMode === "security_triage" || report?.security_triage_result) && (
+          <button
+            onClick={() => setActiveTab("security")}
+            style={{
+              padding: "0.55rem 1rem",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              border: "none",
+              borderBottom: activeTab === "security" ? "2px solid #ef4444" : "2px solid transparent",
+              backgroundColor: "transparent",
+              color: activeTab === "security" ? "#ef4444" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <ShieldAlert size={14} />
+            Security Triage (OSV)
+          </button>
+        )}
+
+        {(investigationMode === "fraud_demo" || report?.fraud_result) && (
+          <button
+            onClick={() => setActiveTab("fraud")}
+            style={{
+              padding: "0.55rem 1rem",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              border: "none",
+              borderBottom: activeTab === "fraud" ? "2px solid #d97706" : "2px solid transparent",
+              backgroundColor: "transparent",
+              color: activeTab === "fraud" ? "#d97706" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <DollarSign size={14} />
+            Fraud Topology Demo
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab("simulation")}
@@ -1141,7 +1479,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           }}
         >
           <GitFork size={14} />
-          Counterfactual Diff
+          Scenario Simulation
         </button>
 
         <button
@@ -1162,7 +1500,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           }}
         >
           <Users size={14} />
-          Reviewer Evidence {report?.reviewer_result ? `(${report.reviewer_result.candidates.length})` : ""}
+          Reviewers & Authors
         </button>
 
         <button
@@ -1183,7 +1521,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           }}
         >
           <GitBranch size={14} />
-          Agent MCP Trace {report ? `(${report.steps.length})` : ""}
+          Agent MCP Trace
         </button>
 
         <button
@@ -1250,8 +1588,8 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
         </button>
       </div>
 
-      {/* Tab Panels */}
-      {activeTab === "graph" && (
+      {/* ── Tab Panels (Lossless: GraphCanvas stays mounted) ── */}
+      <div style={{ display: activeTab === "graph" ? "block" : "none" }}>
         <GraphCanvas
           data={subgraph}
           targetNodeId={selectedModule}
@@ -1263,8 +1601,274 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
           onSelectTarget={(nodeId) => {
             setSelectedModule(nodeId);
             loadGraph(nodeId, selectedRepoId);
+            // If it looks like a file, load it in the code inspector
+            if (nodeId.includes(".") || nodeId.includes("/")) {
+              const fileGuess = nodeId.replace(/^mod:/, "").replace(/\./g, "/") + ".py";
+              setCodeFilePath(fileGuess);
+              loadCode(selectedRepoId, fileGuess);
+            }
           }}
         />
+      </div>
+
+      {activeTab === "code" && (
+        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Code size={18} color="var(--accent-blue)" />
+                Code Inspector (Grounded in Verified Working Tree)
+              </h3>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                Directly inspects checked-out source files for <strong>{selectedRepoId}</strong> at commit <code style={{ fontFamily: "var(--font-mono)" }}>{snapshot?.commit_sha?.slice(0, 8) || "HEAD"}</code>.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="text"
+                value={codeFilePath}
+                onChange={(e) => setCodeFilePath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    loadCode(selectedRepoId, codeFilePath);
+                  }
+                }}
+                placeholder="Relative file path (e.g. backend/app/main.py)"
+                style={{
+                  padding: "0.45rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border-subtle)",
+                  fontSize: "0.8rem",
+                  fontFamily: "var(--font-mono)",
+                  width: "280px",
+                  color: "var(--text-primary)",
+                  backgroundColor: "var(--bg-primary)",
+                }}
+              />
+              <button
+                onClick={() => loadCode(selectedRepoId, codeFilePath)}
+                disabled={isLoadingCode}
+                style={{
+                  padding: "0.45rem 0.85rem",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--accent-blue)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {isLoadingCode ? "Loading..." : "Load Code"}
+              </button>
+            </div>
+          </div>
+
+          {codeError && (
+            <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fee2e2", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>
+              {codeError}
+            </div>
+          )}
+
+          {codeData && (
+            <div style={{ borderRadius: "6px", border: "1px solid var(--border-subtle)", overflow: "hidden", backgroundColor: "var(--bg-primary)" }}>
+              <div style={{ padding: "0.5rem 0.85rem", backgroundColor: "var(--bg-secondary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text-primary)" }}>
+                  {codeData.file_path}
+                </span>
+                <span>
+                  Lines {codeData.start_line} - {codeData.end_line} of {codeData.total_lines} • Language: <strong>{codeData.language}</strong>
+                </span>
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "1rem",
+                  overflowX: "auto",
+                  fontSize: "0.8rem",
+                  lineHeight: "1.5",
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--text-primary)",
+                  maxHeight: "500px",
+                }}
+              >
+                <code>{codeData.content}</code>
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "security" && (
+        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#ef4444", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <ShieldAlert size={18} />
+                Security Vulnerability Triage (OSV.dev Grounded)
+              </h3>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                Scanned declared dependency manifests in <strong>{selectedRepoId}</strong> against public OSV advisories.
+              </p>
+            </div>
+            {report?.security_triage_result && (
+              <span
+                style={{
+                  fontSize: "0.74rem",
+                  fontWeight: 700,
+                  padding: "0.2rem 0.6rem",
+                  borderRadius: "20px",
+                  backgroundColor: report.security_triage_result.total_vulnerabilities_count === 0 ? "#dcfce7" : "#fee2e2",
+                  color: report.security_triage_result.total_vulnerabilities_count === 0 ? "#15803d" : "#b91c1c",
+                }}
+              >
+                {report.security_triage_result.total_vulnerabilities_count} Advisories Found ({report.security_triage_result.dependencies_analyzed_count} Dependencies Analyzed)
+              </span>
+            )}
+          </div>
+
+          {report?.security_triage_result?.remediation_proposal && (
+            <div style={{ padding: "0.85rem", borderRadius: "6px", backgroundColor: "#f8fafc", border: "1px solid var(--border-subtle)", marginBottom: "1rem", fontSize: "0.82rem" }}>
+              <strong style={{ color: "var(--text-primary)" }}>Remediation Plan:</strong>
+              <p style={{ margin: "0.3rem 0 0 0", color: "var(--text-secondary)" }}>
+                {report.security_triage_result.remediation_proposal}
+              </p>
+            </div>
+          )}
+
+          {report?.security_triage_result?.vulnerabilities_found && report.security_triage_result.vulnerabilities_found.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {report.security_triage_result.vulnerabilities_found.map((vuln, idx) => (
+                <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{vuln.vuln_id}</strong>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.severity === "CRITICAL" ? "#fee2e2" : "#fef3c7", color: vuln.severity === "CRITICAL" ? "#b91c1c" : "#b45309" }}>
+                        {vuln.severity}
+                      </span>
+                      <span style={{ fontSize: "0.74rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                        {vuln.package_name}@{vuln.package_version}
+                      </span>
+                    </div>
+                    {vuln.reachability_status && (
+                      <span style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#fee2e2" : "#f1f5f9", color: vuln.reachability_status === "REACHABLE_FROM_CODE" ? "#b91c1c" : "#475569", fontWeight: 600 }}>
+                        {vuln.reachability_status}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{vuln.summary}</p>
+                  {vuln.fixed_version && (
+                    <div style={{ fontSize: "0.74rem", color: "#15803d", fontWeight: 600 }}>
+                      Recommended Fix: Upgrade to <code>{vuln.fixed_version}</code>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)" }}>
+              <CheckCircle2 size={32} color="#10b981" style={{ marginBottom: "0.5rem" }} />
+              <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>
+                No Known Public Vulnerabilities Detected
+              </div>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                All scanned dependencies in this repository snapshot match current non-vulnerable OSV records.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "fraud" && (
+        <div style={{ backgroundColor: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border-subtle)", padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#d97706", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <DollarSign size={18} />
+                Synthetic Financial Graph Fraud Topology (nexusact_fraud_demo)
+              </h3>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.25rem 0 0 0" }}>
+                Multi-hop circular transfer cycles, shared device hardware fingerprints, and verified benign controls in FalkorDB.
+              </p>
+            </div>
+            {report?.fraud_result && (
+              <span
+                style={{
+                  fontSize: "0.74rem",
+                  fontWeight: 700,
+                  padding: "0.2rem 0.6rem",
+                  borderRadius: "20px",
+                  backgroundColor: "#fee2e2",
+                  color: "#b91c1c",
+                }}
+              >
+                Risk: {report.fraud_result.risk_indicator}
+              </span>
+            )}
+          </div>
+
+          {/* Synthetic Disclaimer Banner */}
+          <div style={{ padding: "0.75rem", borderRadius: "6px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.78rem", marginBottom: "1rem" }}>
+            <strong>Synthetic Demonstration Notice:</strong> This workflow operates exclusively on deterministic synthetic records in FalkorDB graph <code>nexusact_fraud_demo</code>. No real individuals, accounts, or banks are represented.
+          </div>
+
+          {report?.fraud_result?.patterns_detected && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
+              <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                Detected Suspicious Topology Patterns ({report.fraud_result.patterns_detected.length})
+              </h4>
+              {report.fraud_result.patterns_detected.map((pat, idx) => (
+                <div key={idx} style={{ padding: "0.85rem", borderRadius: "6px", border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-primary)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <strong style={{ fontSize: "0.86rem", color: "var(--text-primary)" }}>{pat.pattern_type}</strong>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: (pat.risk_score ?? 0.5) >= 0.75 ? "#fee2e2" : "#fef3c7", color: (pat.risk_score ?? 0.5) >= 0.75 ? "#b91c1c" : "#b45309" }}>
+                        Risk: {pat.risk_score !== undefined ? `${(pat.risk_score * 100).toFixed(0)}%` : pat.severity}
+                      </span>
+                    </div>
+                    {pat.amount_involved && (
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                        Flow: ${pat.amount_involved.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", margin: "0.4rem 0" }}>{pat.details}</p>
+                  {pat.participating_nodes && pat.participating_nodes.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Path:</span>
+                      {pat.participating_nodes.map((node: string, i: number) => (
+                        <span key={i} style={{ padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
+                          {node}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Benign Control Verification */}
+          {report?.fraud_result?.benign_controls && (
+            <div>
+              <h4 style={{ fontSize: "0.86rem", fontWeight: 700, margin: "0 0 0.5rem 0", color: "#15803d" }}>
+                Verified Benign Control Accounts (False-Positive Suppression)
+              </h4>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                {report.fraud_result.benign_controls.map((ctrl, idx) => (
+                  <div key={idx} style={{ padding: "0.75rem", borderRadius: "6px", border: "1px solid #86efac", backgroundColor: "#f0fdf4" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ fontSize: "0.82rem", color: "#15803d", fontFamily: "var(--font-mono)" }}>{ctrl.account_id}</strong>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#15803d" }}>VERIFIED BENIGN</span>
+                    </div>
+                    <p style={{ fontSize: "0.74rem", color: "#166534", margin: "0.3rem 0 0 0" }}>{ctrl.status_reason || ctrl.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === "simulation" && (
@@ -1316,17 +1920,9 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
             )}
           </div>
 
-          {/* 1. Verified Path Result (from active investigation, findings, or shortest path) */}
+          {/* 1. Verified Path Result */}
           {(activePathNodes.length >= 2 || report?.shortest_path_result) && (
-            <div
-              style={{
-                marginBottom: "1.25rem",
-                padding: "0.85rem 1rem",
-                backgroundColor: "var(--bg-muted)",
-                borderRadius: "6px",
-                border: "1px solid var(--border-subtle)",
-              }}
-            >
+            <div style={{ marginBottom: "1.5rem", padding: "0.75rem", backgroundColor: "var(--bg-muted)", borderRadius: "6px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem" }}>
                 <Compass size={14} color="var(--accent-blue)" />
                 <strong style={{ fontSize: "0.8rem", color: "var(--text-primary)" }}>

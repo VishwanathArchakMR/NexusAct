@@ -57,6 +57,10 @@ class InvestigationRequest(BaseModel):
     repo_id: Optional[str] = Field(default=None, description="Selected repository identifier")
     graph_name: Optional[str] = Field(default=None, description="Target graph name")
     max_budget: int = Field(default=5, ge=1, le=8, description="Maximum tool invocation budget")
+    investigation_mode: Optional[str] = Field(
+        default=None,
+        description="Optional mode: codebase_walkthrough, change_impact, security_triage, fraud_demo",
+    )
 
 
 class GraphNode(BaseModel):
@@ -92,6 +96,7 @@ async def run_investigation(payload: InvestigationRequest) -> InvestigationRepor
             module_identifier=payload.module_identifier,
             repo_id=payload.repo_id,
             graph_name=payload.graph_name,
+            investigation_mode=payload.investigation_mode,
         )
         return report
     except ValueError as ve:

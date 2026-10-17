@@ -38,7 +38,8 @@ from backend.app.graph.tools.reviewers import WhoKnowsOutput
 from backend.app.graph.tools.security_triage import SecurityTriageOutput
 from backend.app.graph.tools.shortest_path import ShortestPathOutput
 from backend.app.graph.tools.simulation import SimulationResult
-from backend.app.sources.models import SourceMetadataOutput
+from backend.app.sources.freshness import source_freshness_service
+from backend.app.sources.models import SourceMetadataOutput, SourceSnapshot
 from backend.app.sources.registry import repo_registry
 from mcp_server.server import create_mcp_server
 
@@ -61,6 +62,7 @@ class InvestigationReport(BaseModel):
     target_module_id: str
     target_module_name: str
     status: str = "COMPLETED"  # COMPLETED | AMBIGUOUS | UNRESOLVED | FAILED
+    investigation_mode: str = "codebase_walkthrough"
     steps: List[InvestigationStep] = Field(default_factory=list)
     verification: Optional[PathVerificationResult] = None
     summary: str = ""
@@ -73,6 +75,10 @@ class InvestigationReport(BaseModel):
     source_metadata_result: Optional[SourceMetadataOutput] = None
     security_triage_result: Optional[SecurityTriageOutput] = None
     fraud_result: Optional[FraudInvestigationOutput] = None
+    source_snapshot: Optional[SourceSnapshot] = None
+    snapshot_id: Optional[str] = None
+    freshness_status: str = "FRESH"
+    working_tree_fingerprint: Optional[str] = None
     action_proposal: Optional[Dict[str, Any]] = None
     ambiguity_candidates: Optional[List[Dict[str, Any]]] = None
     repository_id: Optional[str] = None
@@ -107,21 +113,83 @@ class AdaptiveInvestigationAgent:
         repo_id: Optional[str] = None,
         graph_name: Optional[str] = None,
         custom_provider: Optional[BaseLLMProvider] = None,
+        investigation_mode: Optional[str] = None,
     ) -> InvestigationReport:
-        """Executes the full adaptive investigation workflow with multi-repository and NL target resolution."""
+        """Executes adaptive investigation with source freshness and multi-repo isolation."""
         target_graph = graph_name
         resolved_repo_id = repo_id
         commit_sha: str = ""
+        source_snapshot: Optional[SourceSnapshot] = None
+        working_tree_fp: Optional[str] = None
+        freshness_status: str = "FRESH"
+        snapshot_id: Optional[str] = None
 
         provider = custom_provider or self.llm
         is_heuristic = not provider.is_available
 
-        if repo_id:
+        q_lower = question.lower()
+        if investigation_mode:
+            mode = investigation_mode.lower()
+        elif any(
+            w in q_lower
+            for w in [
+                "security",
+                "vulnerability",
+                "cve",
+                "triage",
+                "compromise",
+                "advisory",
+                "audit",
+                "finding",
+            ]
+        ):
+            mode = "security_triage"
+        elif any(
+            w in q_lower
+            for w in [
+                "fraud",
+                "suspicious",
+                "transfer",
+                "cycle",
+                "laundering",
+                "ring",
+            ]
+        ):
+            mode = "fraud_demo"
+        elif any(
+            w in q_lower
+            for w in [
+                "break",
+                "impact",
+                "simulate",
+                "remove",
+                "blast radius",
+                "refactor",
+            ]
+        ):
+            mode = "change_impact"
+        else:
+            mode = "codebase_walkthrough"
+
+        if mode == "fraud_demo":
+            target_graph = "nexusact_fraud_demo"
+            resolved_repo_id = "synthetic_fraud_demo"
+            commit_sha = "SYNTHETIC_DATA_V1"
+            from backend.app.sources.models import SourceType
+
+            source_snapshot = SourceSnapshot(
+                snapshot_id="snap_fraud_demo",
+                repository_id="synthetic_fraud_demo",
+                source_type=SourceType.LOCAL,
+                canonical_source="nexusact_fraud_demo",
+                commit_sha="SYNTHETIC",
+                graph_name="nexusact_fraud_demo",
+                freshness_status="FRESH",
+            )
+            snapshot_id = "snap_fraud_demo"
+        elif repo_id:
             repo_rec = repo_registry.get_repository(repo_id)
-            if repo_rec:
-                target_graph = repo_rec.graph_name
-                commit_sha = repo_rec.commit_sha or ""
-            elif not graph_name:
+            if not repo_rec and not graph_name:
                 # Specified repo_id does not exist in registry; return UNRESOLVED without cross-graph leakage
                 inv_id = f"inv_{uuid.uuid4().hex[:8]}"
                 return InvestigationReport(
@@ -130,6 +198,7 @@ class AdaptiveInvestigationAgent:
                     target_module_id=module_identifier or "",
                     target_module_name=module_identifier or "Unknown",
                     status="UNRESOLVED",
+                    investigation_mode=mode,
                     summary=(
                         f"Repository '{repo_id}' is not registered. "
                         "Cannot execute investigation across an unvalidated graph context."
@@ -146,6 +215,47 @@ class AdaptiveInvestigationAgent:
                     budget_used=0,
                     budget_remaining=self.max_tool_budget,
                 )
+            elif repo_rec:
+                try:
+                    source_snapshot = source_freshness_service.check_and_refresh_source(repo_id)
+                    target_graph = source_snapshot.graph_name
+                    commit_sha = source_snapshot.commit_sha
+                    working_tree_fp = source_snapshot.working_tree_fingerprint
+                    snapshot_id = source_snapshot.snapshot_id
+                    freshness_status = source_snapshot.freshness_status
+                except Exception as _fe:
+                    logger.warning("Freshness check error on %s: %s", repo_id, _fe)
+                    target_graph = repo_rec.graph_name
+                    commit_sha = repo_rec.commit_sha or ""
+                    freshness_status = "STALE_SOURCE_UNAVAILABLE"
+                    source_snapshot = repo_rec.to_snapshot()
+        elif graph_name:
+            target_graph = graph_name
+            rec = repo_registry.get_repository(graph_name)
+            if rec:
+                resolved_repo_id = rec.id
+                commit_sha = rec.commit_sha
+                snapshot_id = rec.active_snapshot_id
+                source_snapshot = rec.to_snapshot()
+        else:
+            # Default to local workspace
+            local_rec = repo_registry.get_repository("repo:local_nexusact")
+            if local_rec:
+                resolved_repo_id = local_rec.id
+                try:
+                    source_snapshot = source_freshness_service.check_and_refresh_source("repo:local_nexusact")
+                    target_graph = source_snapshot.graph_name
+                    commit_sha = source_snapshot.commit_sha
+                    working_tree_fp = source_snapshot.working_tree_fingerprint
+                    snapshot_id = source_snapshot.snapshot_id
+                    freshness_status = source_snapshot.freshness_status
+                except Exception as _lfe:
+                    logger.warning("Local freshness check error: %s", _lfe)
+                    target_graph = local_rec.graph_name
+                    commit_sha = local_rec.commit_sha or ""
+                    source_snapshot = local_rec.to_snapshot()
+            else:
+                target_graph = target_graph or self.client.primary_graph_name
 
         if not target_graph:
             target_graph = self.client.primary_graph_name
@@ -186,91 +296,110 @@ class AdaptiveInvestigationAgent:
                     target_module_id=clean_ident,
                     target_module_name=clean_ident,
                     status="UNRESOLVED",
+                    investigation_mode=mode,
                     unresolved_reason=unresolved_msg,
                     summary=unresolved_msg,
                     ambiguity_candidates=candidates_payload,
                     repository_id=resolved_repo_id,
                     graph_name=target_graph,
                     commit_sha=commit_sha,
+                    source_snapshot=source_snapshot,
+                    snapshot_id=snapshot_id,
+                    freshness_status=freshness_status,
+                    working_tree_fingerprint=working_tree_fp,
                     budget_used=0,
                     budget_remaining=self.max_tool_budget,
                     is_heuristic_fallback=is_heuristic,
                 )
         else:
-            # Natural language entity resolution
-            res_entity = execute_resolve_entity(
-                ResolveEntityInput(query=question, graph_name=target_graph),
-                client=self.client,
-            )
-            if res_entity.confidence in ("EXACT", "HIGH") and res_entity.resolved_id:
-                resolved_id = res_entity.resolved_id
-                target_name = res_entity.resolved_name or resolved_id
-            elif res_entity.confidence == "AMBIGUOUS":
-                # Honest ambiguity handling: return early with clarification prompt
-                inv_id = f"inv_{uuid.uuid4().hex[:8]}"
-                return InvestigationReport(
-                    investigation_id=inv_id,
-                    question=question,
-                    target_module_id="",
-                    target_module_name="",
-                    status="AMBIGUOUS",
-                    summary=res_entity.clarification_prompt
-                    or "Multiple matching modules found. Please clarify target.",
-                    ambiguity_candidates=[c.model_dump() for c in res_entity.candidates],
-                    repository_id=resolved_repo_id,
-                    graph_name=target_graph,
-                    commit_sha=commit_sha,
-                    budget_used=0,
-                    budget_remaining=self.max_tool_budget,
-                    is_heuristic_fallback=is_heuristic,
-                )
+            if mode in ("security_triage", "fraud_demo"):
+                resolved_id = None
+                target_name = "Repository-wide"
             else:
-                # Check for repository-wide, security, or domain (e.g. fraud) question
-                q_lower = question.lower()
-                is_repo_wide = any(
-                    w in q_lower
-                    for w in [
-                        "central",
-                        "pagerank",
-                        "important",
-                        "source",
-                        "metadata",
-                        "provenance",
-                        "repository",
-                        "fraud",
-                        "transfer",
-                        "suspicious",
-                        "transaction",
-                        "vulnerability",
-                        "security",
-                        "triage",
-                        "cve",
-                        "osv",
-                        "dependency",
-                    ]
+                # Natural language entity resolution
+                res_entity = execute_resolve_entity(
+                    ResolveEntityInput(query=question, graph_name=target_graph),
+                    client=self.client,
                 )
-                if not is_repo_wide:
+                if res_entity.confidence in ("EXACT", "HIGH") and res_entity.resolved_id:
+                    resolved_id = res_entity.resolved_id
+                    target_name = res_entity.resolved_name or resolved_id
+                elif res_entity.confidence == "AMBIGUOUS":
+                    # Honest ambiguity handling: return early with clarification prompt
                     inv_id = f"inv_{uuid.uuid4().hex[:8]}"
-                    unresolved_msg = (
-                        f"Could not resolve any target module from the question '{question}' "
-                        f"in graph '{target_graph}'. Please specify a target module or ask "
-                        "about repository-wide properties like PageRank or source metadata."
-                    )
                     return InvestigationReport(
                         investigation_id=inv_id,
                         question=question,
                         target_module_id="",
                         target_module_name="",
-                        status="UNRESOLVED",
-                        unresolved_reason=unresolved_msg,
-                        summary=unresolved_msg,
+                        status="AMBIGUOUS",
+                        investigation_mode=mode,
+                        summary=res_entity.clarification_prompt
+                        or "Multiple matching modules found. Please clarify target.",
+                        ambiguity_candidates=[c.model_dump() for c in res_entity.candidates],
                         repository_id=resolved_repo_id,
                         graph_name=target_graph,
                         commit_sha=commit_sha,
+                        source_snapshot=source_snapshot,
+                        snapshot_id=snapshot_id,
+                        freshness_status=freshness_status,
+                        working_tree_fingerprint=working_tree_fp,
                         budget_used=0,
                         budget_remaining=self.max_tool_budget,
                         is_heuristic_fallback=is_heuristic,
                     )
+                else:
+                    # Check for repository-wide, security, or domain (e.g. fraud) question
+                    q_lower = question.lower()
+                    is_repo_wide = any(
+                        w in q_lower
+                        for w in [
+                            "central",
+                            "pagerank",
+                            "important",
+                            "source",
+                            "metadata",
+                            "provenance",
+                            "repository",
+                            "fraud",
+                            "transfer",
+                            "suspicious",
+                            "transaction",
+                            "vulnerability",
+                            "security",
+                            "triage",
+                            "cve",
+                            "osv",
+                            "dependency",
+                        ]
+                    )
+                    if not is_repo_wide:
+                        inv_id = f"inv_{uuid.uuid4().hex[:8]}"
+                        unresolved_msg = (
+                            f"Could not resolve any target module from the question '{question}' "
+                            f"in graph '{target_graph}'. Please specify a target module or ask "
+                            "about repository-wide properties like PageRank or source metadata."
+                        )
+                        return InvestigationReport(
+                            investigation_id=inv_id,
+                            question=question,
+                            target_module_id="",
+                            target_module_name="",
+                            status="UNRESOLVED",
+                            investigation_mode=mode,
+                            unresolved_reason=unresolved_msg,
+                            summary=unresolved_msg,
+                            repository_id=resolved_repo_id,
+                            graph_name=target_graph,
+                            commit_sha=commit_sha,
+                            source_snapshot=source_snapshot,
+                            snapshot_id=snapshot_id,
+                            freshness_status=freshness_status,
+                            working_tree_fingerprint=working_tree_fp,
+                            budget_used=0,
+                            budget_remaining=self.max_tool_budget,
+                            is_heuristic_fallback=is_heuristic,
+                        )
 
         if resolved_id and not target_name:
             name_res = self.client.query(
@@ -534,6 +663,7 @@ class AdaptiveInvestigationAgent:
             target_module_id=resolved_id or "",
             target_module_name=target_name or "Repository-wide",
             status="COMPLETED",
+            investigation_mode=mode,
             steps=steps,
             verification=verification_result,
             summary=final_summary,
@@ -550,6 +680,10 @@ class AdaptiveInvestigationAgent:
             repository_id=resolved_repo_id,
             graph_name=target_graph,
             commit_sha=commit_sha,
+            source_snapshot=source_snapshot,
+            snapshot_id=snapshot_id,
+            freshness_status=freshness_status,
+            working_tree_fingerprint=working_tree_fp,
             is_heuristic_fallback=is_heuristic,
             budget_used=len(steps),
             budget_remaining=remaining_budget,
@@ -945,9 +1079,17 @@ class AdaptiveInvestigationAgent:
             if impact.is_truncated:
                 body_lines.append("  - *(Additional callers truncated at query limit)*")
         else:
-            body_lines.append("- *No upstream modules directly or indirectly depend on this module.*")
+            body_lines.append(
+                "- *No modeled upstream dependency path was found in this snapshot. "
+                "The result is limited by the current parser and relationship coverage.*"
+            )
 
         if simulation:
+            blast_display = (
+                f"{simulation.blast_radius_score:.3f} (broken/baseline paths)"
+                if simulation.baseline_paths_count > 0
+                else "N/A (no affected baseline dependency paths)"
+            )
             body_lines.extend(
                 [
                     "",
@@ -957,7 +1099,7 @@ class AdaptiveInvestigationAgent:
                         f"{simulation.disappeared_paths_count} / {simulation.baseline_paths_count}"
                     ),
                     f"- **Surviving Paths:** {simulation.surviving_paths_count}",
-                    f"- **Blast Radius Score:** {simulation.blast_radius_score:.3f} (broken/baseline paths)",
+                    f"- **Blast Radius Score:** {blast_display}",
                     f"- **Surviving Modules in Copy:** {simulation.surviving_modules_count}",
                     f"> Note: {simulation.disclaimer}",
                 ]
@@ -970,6 +1112,11 @@ class AdaptiveInvestigationAgent:
                     "### Recommended Reviewers (Evidence-Derived)",
                 ]
             )
+            if reviewers.evidence_status == "NO_REVIEW_DATA":
+                body_lines.append(
+                    "> **Reviewer Evidence Notice:** PR peer review records unavailable in local Git history "
+                    "(status: `NO_REVIEW_DATA`). Scoring reflects historical commit changes and file modifications."
+                )
             for cand in reviewers.candidates[:3]:
                 body_lines.append(f"- **{cand.name}** (Score: {cand.composite_score:.2f}) — {cand.rationale}")
 
@@ -1013,15 +1160,29 @@ class AdaptiveInvestigationAgent:
         if not security_triage and not fraud:
             parts.append(f"Investigation of module '{target_name}':")
             if impact:
-                parts.append(f"Identified {impact.total_impacted_count} upstream dependent modules within 4 hops.")
+                if impact.total_impacted_count > 0:
+                    parts.append(f"Identified {impact.total_impacted_count} upstream dependent modules within 4 hops.")
+                else:
+                    parts.append(
+                        "No modeled upstream dependency path was found in this snapshot. "
+                        "The result is limited by the current parser and relationship coverage."
+                    )
             if simulation:
-                parts.append(
-                    f"Simulated module removal indicated {simulation.disappeared_paths_count} broken dependency paths "
-                    f"with a blast radius of {simulation.blast_radius_score:.2f}."
-                )
+                if simulation.baseline_paths_count > 0:
+                    parts.append(
+                        f"Simulated module removal indicated {simulation.disappeared_paths_count} broken paths "
+                        f"with a blast radius of {simulation.blast_radius_score:.2f}."
+                    )
+                else:
+                    parts.append(
+                        "Simulated module removal indicated 0 affected baseline dependency paths (blast radius N/A)."
+                    )
             if reviewers and reviewers.candidates:
                 names = ", ".join([c.name for c in reviewers.candidates[:2]])
-                parts.append(f"Primary suggested reviewers with relevant commit history: {names}.")
+                if reviewers.evidence_status == "NO_REVIEW_DATA":
+                    parts.append(f"Contributors with relevant commit history: {names} (PR reviews unavailable).")
+                else:
+                    parts.append(f"Primary suggested reviewers with relevant commit history: {names}.")
             if verification:
                 parts.append(f"Graph topology verification status: {verification.status.value}.")
 

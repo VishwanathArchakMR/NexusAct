@@ -11,6 +11,7 @@ from backend.app.core.config import settings
 from backend.app.graph.client import graph_client
 from backend.app.graph.schema import LABEL_MODULE
 from backend.app.ingestion.engine import IngestionReport, RepositoryIngestionEngine
+from backend.app.sources.freshness import source_freshness_service
 from backend.app.sources.github_fetcher import GitHubRepoFetcher
 from backend.app.sources.github_metadata import GitHubMetadataCollector
 from backend.app.sources.models import (
@@ -18,6 +19,7 @@ from backend.app.sources.models import (
     RegisterRepositoryRequest,
     RepositoryRecord,
     SourceMetadataOutput,
+    SourceSnapshot,
     SourceType,
 )
 from backend.app.sources.registry import repo_registry
@@ -198,9 +200,113 @@ def get_source_metadata(repo_id: str) -> SourceMetadataOutput:
         repository_name=record.name,
         graph_name=record.graph_name,
         commit_sha=record.commit_sha,
+        working_tree_fingerprint=record.working_tree_fingerprint,
+        active_snapshot_id=record.active_snapshot_id,
+        freshness_status=record.freshness_status,
         sources=record.capabilities,
         known_gaps=record.known_gaps,
     )
+
+
+class FileContentResponse(BaseModel):
+    file_path: str
+    repository_id: str
+    commit_sha: str
+    start_line: int
+    end_line: int
+    total_lines: int
+    content: str
+    language: str
+
+
+@router.get("/snapshot/{repo_id}", response_model=SourceSnapshot)
+def get_repository_snapshot(
+    repo_id: str,
+    refresh: bool = Query(default=False, description="Force freshness verification and update"),
+) -> SourceSnapshot:
+    """Verifies and returns the authoritative SourceSnapshot for a repository."""
+    try:
+        return source_freshness_service.check_and_refresh_source(repo_id, force_refresh=refresh)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed getting snapshot for %s: %s", repo_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/file-content", response_model=FileContentResponse)
+def get_file_content(
+    repo_id: str = Query(..., description="Repository identifier"),
+    file_path: str = Query(..., description="Relative file path within repository"),
+    start_line: int = Query(default=1, ge=1),
+    end_line: int = Query(default=150, ge=1),
+) -> FileContentResponse:
+    """Safely retrieves lines of code from a file in the repository's pinned snapshot."""
+    record = repo_registry.get_repository(repo_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Repository '{repo_id}' not found.")
+
+    # Determine base directory
+    if record.source_type == SourceType.LOCAL:
+        base_dir = Path(record.url_or_path).resolve()
+    else:
+        from backend.app.sources.github_fetcher import GitHubRepoFetcher
+
+        fetcher = GitHubRepoFetcher()
+        raw_url = record.canonical_source or record.url_or_path
+        val_url = PublicGitHubUrl.parse_and_validate(raw_url)
+        base_dir = fetcher.get_repo_cache_dir(val_url.owner, val_url.repo).resolve()
+
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Checkout for repository '{repo_id}' not found on disk.")
+
+    # Prevent directory traversal attacks
+    clean_rel = file_path.replace("\\", "/").lstrip("/")
+    target_file = (base_dir / clean_rel).resolve()
+    try:
+        target_file.relative_to(base_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file path (path traversal outside repository root).")
+
+    if not target_file.exists() or not target_file.is_file():
+        raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in repository.")
+
+    try:
+        lines = target_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        total_lines = len(lines)
+        s_line = max(1, start_line)
+        e_line = min(total_lines, max(s_line, end_line))
+        slice_lines = lines[s_line - 1 : e_line]
+        content = "\n".join(slice_lines)
+
+        ext = target_file.suffix.lower()
+        lang_map = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".json": "json",
+            ".md": "markdown",
+            ".toml": "toml",
+            ".yml": "yaml",
+            ".yaml": "yaml",
+        }
+        language = lang_map.get(ext, "text")
+
+        return FileContentResponse(
+            file_path=clean_rel,
+            repository_id=record.id,
+            commit_sha=record.commit_sha,
+            start_line=s_line,
+            end_line=e_line,
+            total_lines=total_lines,
+            content=content,
+            language=language,
+        )
+    except Exception as e:
+        logger.error("Failed reading file %s: %s", target_file, e)
+        raise HTTPException(status_code=500, detail=f"Failed reading file content: {str(e)}")
 
 
 @router.get("/modules", response_model=List[ModuleSuggestion])

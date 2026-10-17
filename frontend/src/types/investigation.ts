@@ -154,12 +154,108 @@ export interface ActionExecutionResult {
   executed_at: string;
 }
 
+export interface VulnerabilityFinding {
+  vuln_id: string;
+  package_name: string;
+  package_version: string;
+  ecosystem: string;
+  severity: string;
+  summary: string;
+  details: string;
+  fixed_version?: string | null;
+  affected_version_range?: string | null;
+  source_url: string;
+  affected_modules: string[];
+  reachability_status?: string | null;
+}
+
+export interface SecurityTriageOutput {
+  repository_id: string;
+  graph_name: string;
+  manifests_inspected: string[];
+  dependencies_analyzed_count: number;
+  total_vulnerabilities_count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  vulnerabilities_found: VulnerabilityFinding[];
+  evidence_status: string;
+  disclaimer: string;
+  uncertainties: string[];
+  remediation_proposal?: string | null;
+}
+
+export interface FraudPattern {
+  pattern_type: string;
+  severity: string;
+  description: string;
+  involved_nodes: string[];
+  evidence_criteria: string;
+  multi_hop_path?: string[];
+  transaction_evidence?: Array<{ from: string; to: string; amount: number; time: string }>;
+  risk_score?: number;
+  amount_involved?: number;
+  details?: string;
+  participating_nodes?: string[];
+}
+
+export interface BenignControl {
+  account_id: string;
+  status: string;
+  reason?: string;
+  status_reason?: string;
+}
+
+export interface FraudInvestigationOutput {
+  graph_name: string;
+  investigation_question: string;
+  risk_indicator: string;
+  patterns_detected: FraudPattern[];
+  benign_controls: BenignControl[];
+  total_suspicious_volume_usd: number;
+  recommended_action: string;
+  synthetic_disclaimer: string;
+  uncertainties: string[];
+}
+
+export interface SourceSnapshot {
+  snapshot_id: string;
+  repository_id: string;
+  source_type: "local" | "github";
+  canonical_source: string;
+  default_branch?: string | null;
+  commit_sha: string;
+  working_tree_fingerprint?: string | null;
+  graph_name: string;
+  source_checked_at: string;
+  ingested_at?: string | null;
+  parser_version: string;
+  ingestion_status: string;
+  module_count: number;
+  edge_count: number;
+  known_gaps: string[];
+  freshness_status: "FRESH" | "UPDATED" | "STALE_SOURCE_UNAVAILABLE" | "INGESTION_FAILED" | "SNAPSHOT_UNRESOLVED";
+}
+
+export interface FileContentResponse {
+  file_path: string;
+  repository_id: string;
+  commit_sha: string;
+  start_line: number;
+  end_line: number;
+  total_lines: number;
+  content: string;
+  language: string;
+}
+
 export interface InvestigationReport {
   investigation_id: string;
   question: string;
   target_module_id: string;
   target_module_name: string;
   status: string; // COMPLETED | AMBIGUOUS | UNRESOLVED | FAILED
+  investigation_mode?: string | null;
   steps: InvestigationStep[];
   verification?: PathVerificationResult | null;
   summary: string;
@@ -170,6 +266,12 @@ export interface InvestigationReport {
   neighborhood_result?: GraphNeighborhoodOutput | null;
   shortest_path_result?: ShortestPathOutput | null;
   source_metadata_result?: SourceMetadataOutput | null;
+  security_triage_result?: SecurityTriageOutput | null;
+  fraud_result?: FraudInvestigationOutput | null;
+  source_snapshot?: SourceSnapshot | null;
+  snapshot_id?: string | null;
+  freshness_status?: string | null;
+  working_tree_fingerprint?: string | null;
   action_proposal?: { title: string; body: string } | null;
   ambiguity_candidates?: CandidateMatch[] | null;
   repository_id?: string | null;
