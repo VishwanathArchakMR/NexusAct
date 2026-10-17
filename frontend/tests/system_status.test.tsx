@@ -37,6 +37,16 @@ vi.mock("../src/api/client", () => ({
     database: { connected: true, host: "127.0.0.1", port: 6379, graph: "nexusact_main" },
     schema_version: "1.0.0",
   }),
+  fetchRepositories: vi.fn().mockResolvedValue([
+    {
+      id: "repo:local_nexusact",
+      name: "NexusAct",
+      graph_name: "nexusact_main",
+      status: "INGESTED",
+      freshness_status: "FRESH",
+      commit_sha: "3c2b1f9a",
+    },
+  ]),
   testLLMConnectivity: vi.fn().mockResolvedValue({
     status: "FALLBACK_ACTIVE",
     provider: "Deterministic Rule Engine",

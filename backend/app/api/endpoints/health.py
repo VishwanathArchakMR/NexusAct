@@ -2,7 +2,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 from pydantic import BaseModel, Field
 
 from backend.app.agent.llm import GeminiProvider, get_llm_provider
@@ -128,7 +128,9 @@ def get_readiness(response: Response) -> ReadinessResponse:
     summary="Comprehensive system status",
     description="Returns aggregate health metrics for the frontend status dashboard.",
 )
-def get_system_status() -> SystemStatusResponse:
+def get_system_status(
+    repo_id: Optional[str] = Query(None, description="Active repository identifier"),
+) -> SystemStatusResponse:
     """Returns real aggregate system status for the frontend UI."""
     diag = graph_client.get_graph_diagnostics(settings.FALKORDB_PRIMARY_GRAPH)
 
@@ -136,8 +138,11 @@ def get_system_status() -> SystemStatusResponse:
 
     from backend.app.sources.registry import repo_registry
 
-    repos = repo_registry.list_repositories()
-    active_repo = repos[0] if repos else None
+    if repo_id:
+        active_repo = repo_registry.get_repository(repo_id)
+    else:
+        repos = repo_registry.list_repositories()
+        active_repo = repos[0] if repos else None
 
     llm_has_key = bool(
         settings.GEMINI_API_KEY

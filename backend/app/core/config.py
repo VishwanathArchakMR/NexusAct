@@ -1,14 +1,18 @@
 """Application configuration settings using Pydantic v2 Settings."""
 
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE_PATH = REPO_ROOT / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(str(ENV_FILE_PATH), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

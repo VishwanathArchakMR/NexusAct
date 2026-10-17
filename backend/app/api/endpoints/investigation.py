@@ -326,3 +326,98 @@ def get_graph_subgraph(
     except Exception as e:
         logger.error("Failed to query subgraph: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class RecentInvestigationItem(BaseModel):
+    investigation_id: str
+    question: str
+    target_module_id: Optional[str] = None
+    status: str
+    summary: Optional[str] = None
+    verification_status: Optional[str] = None
+    created_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    investigation_mode: str = "codebase_walkthrough"
+    repository_id: str = "repo:local_nexusact"
+    graph_name: str = "nexusact_main"
+    commit_sha: Optional[str] = None
+
+
+class RecentInvestigationsResponse(BaseModel):
+    investigations: List[RecentInvestigationItem]
+    total: int
+
+
+@router.get(
+    "/investigation/recent",
+    response_model=RecentInvestigationsResponse,
+    summary="Get recent investigations across repository graphs",
+)
+def get_recent_investigations(
+    limit: int = Query(default=15, ge=1, le=50),
+    repo_id: Optional[str] = Query(default=None),
+) -> RecentInvestigationsResponse:
+    """Retrieves real recent completed investigations stored in FalkorDB graph memory."""
+    all_items: List[RecentInvestigationItem] = []
+    seen_ids = set()
+
+    # Determine graphs to scan: if repo_id specified, inspect its graph; otherwise inspect registered graphs
+    target_graphs: List[str] = []
+    if repo_id:
+        rec = repo_registry.get_repository(repo_id)
+        if rec and rec.graph_name:
+            target_graphs.append(rec.graph_name)
+    else:
+        for r in repo_registry.list_repositories():
+            if r.graph_name and r.graph_name not in target_graphs:
+                target_graphs.append(r.graph_name)
+        if "nexusact_main" not in target_graphs:
+            target_graphs.append("nexusact_main")
+        if "nexusact_fraud_demo" not in target_graphs:
+            target_graphs.append("nexusact_fraud_demo")
+
+    query_str = """
+    MATCH (inv:Investigation)
+    RETURN inv.id, inv.question, inv.target_module_id, inv.status, inv.summary,
+           inv.verification_status, inv.created_at, inv.finished_at,
+           inv.investigation_mode, inv.repository_id, inv.graph_name, inv.commit_sha
+    ORDER BY inv.created_at DESC
+    LIMIT $limit
+    """
+
+    for g_name in target_graphs:
+        try:
+            rows = graph_client.query(query_str, params={"limit": limit}, graph_name=g_name)
+            for row in rows:
+                inv_id = str(row[0]) if row[0] else ""
+                if not inv_id or inv_id in seen_ids:
+                    continue
+                seen_ids.add(inv_id)
+
+                all_items.append(
+                    RecentInvestigationItem(
+                        investigation_id=inv_id,
+                        question=str(row[1]) if row[1] else "",
+                        target_module_id=str(row[2]) if row[2] else None,
+                        status=str(row[3]) if row[3] else "COMPLETED",
+                        summary=str(row[4]) if row[4] else None,
+                        verification_status=str(row[5]) if row[5] else None,
+                        created_at=str(row[6]) if row[6] else None,
+                        finished_at=str(row[7]) if row[7] else None,
+                        investigation_mode=str(row[8]) if row[8] else "codebase_walkthrough",
+                        repository_id=str(row[9]) if row[9] else (repo_id or "repo:local_nexusact"),
+                        graph_name=str(row[10]) if row[10] else g_name,
+                        commit_sha=str(row[11]) if row[11] else None,
+                    )
+                )
+        except Exception as e:
+            logger.debug("Graph %s has no investigations or query skipped: %s", g_name, e)
+
+    # Sort descending by created_at (or finished_at)
+    all_items.sort(key=lambda x: x.created_at or x.finished_at or "", reverse=True)
+    selected_items = all_items[:limit]
+
+    return RecentInvestigationsResponse(
+        investigations=selected_items,
+        total=len(selected_items),
+    )

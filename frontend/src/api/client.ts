@@ -65,10 +65,47 @@ export async function fetchReadiness(): Promise<ReadinessData> {
   throw new ApiError(res.status, `Readiness check failed with status ${res.status}`);
 }
 
-export async function fetchSystemStatus(): Promise<SystemStatusData> {
-  const url = `${config.apiBaseUrl}/api/v1/system/status`;
+export async function fetchSystemStatus(repoId?: string): Promise<SystemStatusData> {
+  const url = repoId
+    ? `${config.apiBaseUrl}/api/v1/system/status?repo_id=${encodeURIComponent(repoId)}`
+    : `${config.apiBaseUrl}/api/v1/system/status`;
   const res = await fetch(url);
   return handleResponse<SystemStatusData>(res, "System status fetch failed");
+}
+
+export async function fetchRecentInvestigations(
+  limit = 10,
+  repoId?: string
+): Promise<{ investigations: import("../types/discovery").SavedInvestigation[]; total: number }> {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (repoId) params.append("repo_id", repoId);
+  const url = `${config.apiBaseUrl}/api/v1/investigation/recent?${params.toString()}`;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const mapped: import("../types/discovery").SavedInvestigation[] = (data.investigations || []).map((inv: any) => ({
+        investigation_id: inv.investigation_id,
+        question: inv.question,
+        summary: inv.summary || "",
+        sources: inv.repository_id || inv.graph_name,
+        approach: inv.verification_status || "COMPLETED",
+        action_id: "",
+        action_title: "",
+        action_desc: "",
+        action_status: inv.status || "COMPLETED",
+        created_at: inv.created_at ? Math.floor(new Date(inv.created_at).getTime() / 1000) : undefined,
+        input_mode: inv.investigation_mode,
+        repository_id: inv.repository_id,
+        graph_name: inv.graph_name,
+        commit_sha: inv.commit_sha,
+      }));
+      return { investigations: mapped, total: data.total || mapped.length };
+    }
+  } catch (err) {
+    console.warn("Unified recent investigations endpoint unavailable, falling back to discover store:", err);
+  }
+  return fetchSavedInvestigations(limit);
 }
 
 // Ingestion & Repository Endpoints

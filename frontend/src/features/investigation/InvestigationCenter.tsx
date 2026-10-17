@@ -10,7 +10,7 @@ import {
   RotateCw,
   Compass,
 } from "lucide-react";
-import { fetchSavedInvestigations, fetchRepositories } from "../../api/client";
+import { fetchRecentInvestigations, fetchRepositories } from "../../api/client";
 import type { SavedInvestigation } from "../../types/discovery";
 import type { RepositoryRecord } from "../../types/investigation";
 import type { InvestigationMode } from "./InvestigationWorkspace";
@@ -57,7 +57,7 @@ export const InvestigationCenter: React.FC<InvestigationCenterProps> = ({
     setIsLoadingHistory(true);
     setHistoryError(null);
     try {
-      const res = await fetchSavedInvestigations(10);
+      const res = await fetchRecentInvestigations(10);
       setSavedInvestigations(res.investigations || []);
     } catch (err: unknown) {
       console.warn("Could not load saved investigations:", err);

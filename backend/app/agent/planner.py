@@ -347,8 +347,10 @@ class AdaptiveInvestigationAgent:
             if mode in ("security_triage", "fraud_demo", "fraud_investigation"):
                 resolved_id = None
                 target_name = "Dataset-wide" if "fraud" in mode else "Repository-wide"
-            elif is_path_query and (
-                "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower)
+            elif (
+                is_path_query
+                and ("api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower))
+                and target_graph == "nexusact_main"
             ):
                 resolved_id = "mod:backend.app.api.router"
                 target_name = "backend.app.api.router -> backend.app.graph.client"
@@ -363,6 +365,9 @@ class AdaptiveInvestigationAgent:
                     target_name = res_entity.resolved_name or resolved_id
                 elif is_path_query and res_entity.confidence == "AMBIGUOUS" and len(res_entity.candidates) >= 2:
                     # Multi-node path traversal: select source candidate
+                    resolved_id = res_entity.candidates[0].module_id
+                    target_name = res_entity.candidates[0].module_name
+                elif is_path_query and len(res_entity.candidates) >= 2:
                     resolved_id = res_entity.candidates[0].module_id
                     target_name = res_entity.candidates[0].module_name
                 elif res_entity.confidence == "AMBIGUOUS":
@@ -455,9 +460,16 @@ class AdaptiveInvestigationAgent:
         investigation_id = f"inv_{uuid.uuid4().hex[:8]}"
         created_at = datetime.now(timezone.utc).isoformat()
 
-        # Persist Investigation start in FalkorDB
+        # Persist Investigation start in FalkorDB with full provenance
         self._record_investigation_start(
-            investigation_id, question, resolved_id or "repo_wide", created_at, target_graph
+            inv_id=investigation_id,
+            question=question,
+            target_id=resolved_id or "repo_wide",
+            created_at=created_at,
+            graph_name=target_graph,
+            mode=mode,
+            repo_id=resolved_repo_id,
+            commit_sha=commit_sha,
         )
 
         # 2. Discover MCP tools and schemas
@@ -501,6 +513,7 @@ class AdaptiveInvestigationAgent:
                     investigation_mode=mode,
                     security_triage_data=security_triage_data,
                     fraud_data=fraud_data,
+                    graph_name=target_graph,
                 )
             else:
                 decision = await provider.decide_next_step(
@@ -715,10 +728,13 @@ class AdaptiveInvestigationAgent:
 
         # Update Investigation record in FalkorDB
         self._record_investigation_finish(
-            investigation_id,
-            final_summary,
-            verification_result.status.value if verification_result else "UNVERIFIED",
-            target_graph,
+            inv_id=investigation_id,
+            summary=final_summary,
+            verification_status=verification_result.status.value if verification_result else "UNVERIFIED",
+            graph_name=target_graph,
+            mode=mode,
+            repo_id=resolved_repo_id,
+            commit_sha=commit_sha,
         )
 
         return InvestigationReport(
@@ -763,6 +779,7 @@ class AdaptiveInvestigationAgent:
         investigation_mode: str = "codebase_walkthrough",
         security_triage_data: Optional[SecurityTriageOutput] = None,
         fraud_data: Optional[FraudInvestigationOutput] = None,
+        graph_name: Optional[str] = None,
     ) -> LLMDecision:
         """Determines the next logical graph tool based on workflow mode, question intent, and collected evidence."""
         called_tools = {s.tool_name for s in steps}
@@ -884,14 +901,38 @@ class AdaptiveInvestigationAgent:
                 )
             elif "api" in q_lower and ("graph" in q_lower or "storage" in q_lower or "database" in q_lower):
                 # Well-known architectural traversal: API router -> endpoints -> graph storage (multi-hop)
-                src_cand = "backend.app.api.router"
-                dst_cand = "backend.app.graph.client"
+                if (graph_name or "nexusact_main") == "nexusact_main":
+                    src_cand = "backend.app.api.router"
+                    dst_cand = "backend.app.graph.client"
+                else:
+                    # Dynamically discover matching api and graph/storage candidates in the active graph
+                    target_g = graph_name or "nexusact_main"
+                    try:
+                        api_rows = self.client.query(
+                            "MATCH (m:Module) WHERE m.name CONTAINS 'api' RETURN m.id ORDER BY length(m.name) LIMIT 1",
+                            graph_name=target_g,
+                        )
+                        storage_rows = self.client.query(
+                            "MATCH (m:Module) WHERE m.name CONTAINS 'graph' OR "
+                            "m.name CONTAINS 'storage' OR m.name CONTAINS 'repository' "
+                            "RETURN m.id ORDER BY length(m.name) LIMIT 1",
+                            graph_name=target_g,
+                        )
+                        src_cand = api_rows[0][0] if api_rows else "api"
+                        dst_cand = storage_rows[0][0] if storage_rows else "storage"
+                    except Exception:
+                        src_cand = "api"
+                        dst_cand = "storage"
+
                 return LLMDecision(
                     action="call_tool",
                     tool_call=LLMToolCall(
                         tool_name="nexusact_shortest_path",
                         arguments={"source_identifier": src_cand, "target_identifier": dst_cand},
-                        reasoning="Trace multi-hop path from API router through endpoints to graph storage client.",
+                        reasoning=(
+                            f"Trace multi-hop path from API entrypoint ({src_cand}) "
+                            f"to storage/graph client ({dst_cand})."
+                        ),
                     ),
                 )
             elif target_id:
@@ -1320,7 +1361,15 @@ class AdaptiveInvestigationAgent:
         return " ".join(parts)
 
     def _record_investigation_start(
-        self, inv_id: str, question: str, target_id: str, created_at: str, graph_name: str
+        self,
+        inv_id: str,
+        question: str,
+        target_id: str,
+        created_at: str,
+        graph_name: str,
+        mode: str = "codebase_walkthrough",
+        repo_id: Optional[str] = None,
+        commit_sha: Optional[str] = None,
     ) -> None:
         try:
             self.client.query(
@@ -1329,9 +1378,22 @@ class AdaptiveInvestigationAgent:
                 SET inv.question = $q,
                     inv.target_module_id = $target,
                     inv.status = 'IN_PROGRESS',
-                    inv.created_at = $created_at
+                    inv.created_at = $created_at,
+                    inv.investigation_mode = $mode,
+                    inv.repository_id = $repo_id,
+                    inv.graph_name = $graph_name,
+                    inv.commit_sha = $commit_sha
                 """,
-                params={"id": inv_id, "q": question, "target": target_id, "created_at": created_at},
+                params={
+                    "id": inv_id,
+                    "q": question,
+                    "target": target_id,
+                    "created_at": created_at,
+                    "mode": mode,
+                    "repo_id": repo_id or "repo:local_nexusact",
+                    "graph_name": graph_name,
+                    "commit_sha": commit_sha or "HEAD",
+                },
                 graph_name=graph_name,
             )
         except Exception as e:
@@ -1369,7 +1431,14 @@ class AdaptiveInvestigationAgent:
             logger.warning("Failed to record tool step in FalkorDB: %s", e)
 
     def _record_investigation_finish(
-        self, inv_id: str, summary: str, verification_status: str, graph_name: str
+        self,
+        inv_id: str,
+        summary: str,
+        verification_status: str,
+        graph_name: str,
+        mode: str = "codebase_walkthrough",
+        repo_id: Optional[str] = None,
+        commit_sha: Optional[str] = None,
     ) -> None:
         try:
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -1379,13 +1448,21 @@ class AdaptiveInvestigationAgent:
                 SET inv.status = 'COMPLETED',
                     inv.summary = $summary,
                     inv.verification_status = $v_status,
-                    inv.finished_at = $ts
+                    inv.finished_at = $ts,
+                    inv.investigation_mode = $mode,
+                    inv.repository_id = $repo_id,
+                    inv.graph_name = $graph_name,
+                    inv.commit_sha = $commit_sha
                 """,
                 params={
                     "inv_id": inv_id,
                     "summary": summary,
                     "v_status": verification_status,
                     "ts": now_iso,
+                    "mode": mode,
+                    "repo_id": repo_id or "repo:local_nexusact",
+                    "graph_name": graph_name,
+                    "commit_sha": commit_sha or "HEAD",
                 },
                 graph_name=graph_name,
             )

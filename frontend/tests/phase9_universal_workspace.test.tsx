@@ -46,6 +46,22 @@ vi.mock("../src/api/client", () => ({
     ],
     total: 1,
   }),
+  fetchRecentInvestigations: vi.fn().mockResolvedValue({
+    investigations: [
+      {
+        investigation_id: "uinv_1",
+        question: "Explore citation relationships between neural network research works.",
+        summary: "Analyzed 2 entities.",
+        sources: "crossref,openalex",
+        approach: "Selected crossref, openalex.",
+        action_id: "act_1",
+        action_title: "Track citations",
+        action_desc: "Monitor incoming citations.",
+        action_status: "PROPOSED",
+      },
+    ],
+    total: 1,
+  }),
   askUniversalGaf: vi.fn().mockResolvedValue({
     investigation_id: "uinv_2",
     question: "Explore citation relationships between neural network research works.",

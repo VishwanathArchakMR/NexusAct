@@ -15,13 +15,16 @@ import {
   Terminal,
   Activity,
 } from "lucide-react";
-import { fetchReadiness, fetchSystemStatus, testLLMConnectivity } from "../../api/client";
+import { fetchReadiness, fetchRepositories, fetchSystemStatus, testLLMConnectivity } from "../../api/client";
 import type { ReadinessData, SystemStatusData, LLMTestResult } from "../../types/system";
+import type { RepositoryRecord } from "../../types/investigation";
 import { DiagnosticCard } from "./DiagnosticCard";
 
 export const SystemStatusDashboard: React.FC = () => {
   const [statusData, setStatusData] = useState<SystemStatusData | null>(null);
   const [readinessData, setReadinessData] = useState<ReadinessData | null>(null);
+  const [repositories, setRepositories] = useState<RepositoryRecord[]>([]);
+  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>("");
@@ -32,12 +35,17 @@ export const SystemStatusDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [sysStatus, readiness] = await Promise.all([
-        fetchSystemStatus(),
+      const [sysStatus, readiness, repos] = await Promise.all([
+        fetchSystemStatus(selectedRepoId || undefined),
         fetchReadiness(),
+        fetchRepositories(),
       ]);
       setStatusData(sysStatus);
       setReadinessData(readiness);
+      setRepositories(repos);
+      if (!selectedRepoId && sysStatus.active_repo_id) {
+        setSelectedRepoId(sysStatus.active_repo_id);
+      }
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err: any) {
       console.error("Telemetry fetch error:", err);
@@ -46,7 +54,7 @@ export const SystemStatusDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedRepoId]);
 
   useEffect(() => {
     let mounted = true;
@@ -107,7 +115,32 @@ export const SystemStatusDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          {repositories.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>Source:</span>
+              <select
+                value={selectedRepoId}
+                onChange={(e) => setSelectedRepoId(e.target.value)}
+                style={{
+                  padding: "0.35rem 0.65rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid var(--border-subtle)",
+                  backgroundColor: "var(--bg-card)",
+                  color: "var(--text-primary)",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {repositories.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {lastRefreshed && (
             <span
               style={{
