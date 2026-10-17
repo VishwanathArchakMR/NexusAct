@@ -494,7 +494,38 @@ def get_file_content(
         raise HTTPException(status_code=400, detail="Invalid file path (path traversal outside repository root).")
 
     if not target_file.exists() or not target_file.is_file():
-        raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in repository.")
+        # Fallback 1: Query FalkorDB to find exact Module or File path in graph
+        resolved_path = None
+        try:
+            m_path_query = """
+            MATCH (m:Module)
+            WHERE m.id = $p OR m.name = $p OR m.path = $p OR m.id = ('mod:' + $p)
+            RETURN m.path LIMIT 1
+            """
+            rows = graph_client.query(m_path_query, params={"p": clean_rel}, graph_name=record.graph_name)
+            if rows and rows[0][0]:
+                cand = (base_dir / str(rows[0][0])).resolve()
+                if cand.exists() and cand.is_file():
+                    target_file = cand
+                    resolved_path = str(rows[0][0])
+        except Exception:
+            pass
+
+        # Fallback 2: Check common programming language extensions if omitted or mismatched
+        if not target_file.exists() or not target_file.is_file():
+            base_stem = clean_rel.rsplit(".", 1)[0]
+            for candidate_ext in [".ts", ".tsx", ".py", ".js", ".jsx", ".json", ".md"]:
+                cand = (base_dir / f"{base_stem}{candidate_ext}").resolve()
+                if cand.exists() and cand.is_file():
+                    target_file = cand
+                    resolved_path = f"{base_stem}{candidate_ext}"
+                    break
+
+        if not target_file.exists() or not target_file.is_file():
+            raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in repository.")
+
+        if resolved_path:
+            clean_rel = resolved_path
 
     try:
         full_text = target_file.read_text(encoding="utf-8", errors="replace")

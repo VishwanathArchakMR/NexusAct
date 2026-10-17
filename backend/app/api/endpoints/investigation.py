@@ -55,7 +55,9 @@ from backend.app.graph.tools.simulation import (
 from backend.app.sources.registry import repo_registry
 
 logger = logging.getLogger("nexusact.api.investigation")
-router = APIRouter(tags=["Investigation & Graph Tools"])
+router = APIRouter(prefix="/investigation", tags=["Investigation & Graph Intelligence"])
+tools_router = APIRouter(prefix="/tools", tags=["Graph Tools"])
+graph_router = APIRouter(prefix="/graph", tags=["Graph Subgraph"])
 
 
 class InvestigationRequest(BaseModel):
@@ -96,7 +98,16 @@ class SubgraphResponse(BaseModel):
     total_edges: int
 
 
-@router.post("/investigate", response_model=InvestigationReport)
+@router.post(
+    "/run",
+    response_model=InvestigationReport,
+    summary="Runs adaptive multi-step investigation loop across graph",
+)
+@router.post(
+    "/investigate",
+    response_model=InvestigationReport,
+    summary="Runs adaptive multi-step investigation loop across graph",
+)
 async def run_investigation(payload: InvestigationRequest) -> InvestigationReport:
     """Runs the adaptive multi-step investigation loop across the graph."""
     try:
@@ -116,7 +127,7 @@ async def run_investigation(payload: InvestigationRequest) -> InvestigationRepor
         raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")
 
 
-@router.post("/investigation/explain-panel", response_model=PanelExplanationResponse)
+@router.post("/explain-panel", response_model=PanelExplanationResponse)
 async def explain_investigation_panel(payload: PanelExplanationRequest) -> PanelExplanationResponse:
     """Generates an evidence-grounded structured explanation for a specific investigation panel."""
     try:
@@ -126,7 +137,7 @@ async def explain_investigation_panel(payload: PanelExplanationRequest) -> Panel
         raise HTTPException(status_code=500, detail=f"Explanation generation failed: {str(e)}")
 
 
-@router.post("/tools/trace-impact", response_model=TraceImpactOutput)
+@tools_router.post("/trace-impact", response_model=TraceImpactOutput)
 def tool_trace_impact(payload: TraceImpactInput) -> TraceImpactOutput:
     """Executes bounded reverse dependency impact analysis (up to 4 hops)."""
     try:
@@ -138,7 +149,7 @@ def tool_trace_impact(payload: TraceImpactInput) -> TraceImpactOutput:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tools/who-knows", response_model=WhoKnowsOutput)
+@tools_router.post("/who-knows", response_model=WhoKnowsOutput)
 def tool_who_knows(payload: WhoKnowsInput) -> WhoKnowsOutput:
     """Executes multi-hop reviewer discovery and expertise scoring."""
     try:
@@ -150,7 +161,7 @@ def tool_who_knows(payload: WhoKnowsInput) -> WhoKnowsOutput:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tools/page-rank", response_model=PageRankOutput)
+@tools_router.post("/page-rank", response_model=PageRankOutput)
 def tool_page_rank(payload: PageRankInput) -> PageRankOutput:
     """Calculates structural centrality across the module graph using native PageRank."""
     try:
@@ -160,7 +171,7 @@ def tool_page_rank(payload: PageRankInput) -> PageRankOutput:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tools/simulate", response_model=SimulationResult)
+@tools_router.post("/simulate", response_model=SimulationResult)
 def tool_simulate_removal(payload: SimulateRemoveModuleInput) -> SimulationResult:
     """Runs isolated counterfactual module removal in a cloned graph."""
     try:
@@ -172,7 +183,7 @@ def tool_simulate_removal(payload: SimulateRemoveModuleInput) -> SimulationResul
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tools/security-triage", response_model=SecurityTriageOutput)
+@tools_router.post("/security-triage", response_model=SecurityTriageOutput)
 async def tool_security_triage(payload: SecurityTriageInput) -> SecurityTriageOutput:
     """Executes dependency security triage against public OSV vulnerability evidence."""
     try:
@@ -182,7 +193,7 @@ async def tool_security_triage(payload: SecurityTriageInput) -> SecurityTriageOu
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tools/investigate-fraud", response_model=FraudInvestigationOutput)
+@tools_router.post("/investigate-fraud", response_model=FraudInvestigationOutput)
 def tool_investigate_fraud(payload: FraudInvestigationInput) -> FraudInvestigationOutput:
     """Executes graph traversal on isolated synthetic fraud demonstration graph."""
     try:
@@ -192,7 +203,7 @@ def tool_investigate_fraud(payload: FraudInvestigationInput) -> FraudInvestigati
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/graph/subgraph", response_model=SubgraphResponse)
+@graph_router.get("/subgraph", response_model=SubgraphResponse)
 def get_graph_subgraph(
     center_module_id: Optional[str] = Query(default=None, description="Optional center module ID to bound subgraph"),
     depth: int = Query(default=2, ge=1, le=4),
@@ -354,7 +365,7 @@ class RecentInvestigationsResponse(BaseModel):
 
 
 @router.get(
-    "/investigation/recent",
+    "/recent",
     response_model=RecentInvestigationsResponse,
     summary="Get recent investigations across repository graphs",
 )
@@ -497,14 +508,9 @@ def _resolve_repo_and_graph(repo_id: Optional[str], graph_name: Optional[str]) -
 
 
 @router.get(
-    "/investigation/simulation-candidates",
-    response_model=SimulationCandidatesResponse,
-    summary="Get candidate modules in active graph available for counterfactual simulation",
-)
-@router.get(
     "/simulation-candidates",
     response_model=SimulationCandidatesResponse,
-    include_in_schema=False,
+    summary="Get candidate modules in active graph available for counterfactual simulation",
 )
 def get_simulation_candidates(
     repo_id: Optional[str] = Query(default=None),
@@ -556,14 +562,9 @@ def get_simulation_candidates(
 
 
 @router.post(
-    "/investigation/simulate",
-    response_model=SimulationEndpointResponse,
-    summary="Execute real FalkorDB isolated graph counterfactual scenario simulation",
-)
-@router.post(
     "/simulate",
     response_model=SimulationEndpointResponse,
-    include_in_schema=False,
+    summary="Execute real FalkorDB isolated graph counterfactual scenario simulation",
 )
 async def run_scenario_simulation(payload: SimulateModulePayload) -> SimulationEndpointResponse:
     """Executes counterfactual removal of target module in an isolated scenario graph clone."""
@@ -606,14 +607,9 @@ async def run_scenario_simulation(payload: SimulateModulePayload) -> SimulationE
 
 
 @router.get(
-    "/investigation/reviewers",
-    response_model=ReviewersQueryResponse,
-    summary="Query contributor and reviewer intelligence grounded in Git commit history",
-)
-@router.get(
     "/reviewers",
     response_model=ReviewersQueryResponse,
-    include_in_schema=False,
+    summary="Query contributor and reviewer intelligence grounded in Git commit history",
 )
 async def get_reviewers_and_authors(
     repo_id: Optional[str] = Query(default=None),
@@ -753,14 +749,9 @@ async def get_reviewers_and_authors(
 
 
 @router.post(
-    "/investigation/chat",
-    response_model=ChatInvestigationResponse,
-    summary="Ask natural language questions answered via real FalkorDB Cypher execution and model reasoning",
-)
-@router.post(
     "/chat",
     response_model=ChatInvestigationResponse,
-    include_in_schema=False,
+    summary="Ask natural language questions answered via real FalkorDB Cypher execution and model reasoning",
 )
 async def chat_investigation(payload: ChatInvestigationRequest) -> ChatInvestigationResponse:
     """Answers engineering or dataset questions using graph schema discovery and read-only Cypher."""

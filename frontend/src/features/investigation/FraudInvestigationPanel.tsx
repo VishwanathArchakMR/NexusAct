@@ -299,11 +299,21 @@ export const FraudInvestigationPanel: React.FC<FraudInvestigationPanelProps> = (
               {datasets.length === 0 ? (
                 <option value="">No datasets imported</option>
               ) : (
-                datasets.map((d) => (
-                  <option key={d.dataset_id} value={d.dataset_id}>
-                    {d.dataset_name} ({d.record_count} txs)
-                  </option>
-                ))
+                datasets.map((d) => {
+                  const displayName = d.dataset_name || d.name || "Dataset";
+                  const originType = d.is_synthetic
+                    ? "Synthetic Benchmark"
+                    : d.filename
+                    ? `File: ${d.filename}`
+                    : "User Upload";
+                  const countStr = `${d.record_count ?? d.total_rows ?? 0} txs`;
+                  const idSlice = d.dataset_id ? d.dataset_id.slice(0, 10) : "";
+                  return (
+                    <option key={d.dataset_id} value={d.dataset_id}>
+                      {displayName} ({originType} • {countStr} • {idSlice})
+                    </option>
+                  );
+                })
               )}
             </select>
           </div>
@@ -330,8 +340,34 @@ export const FraudInvestigationPanel: React.FC<FraudInvestigationPanelProps> = (
                   color: "var(--text-secondary)",
                 }}
               >
-                {activeDataset.record_count} Transactions • {activeDataset.account_count} Accounts
+                {activeDataset.record_count ?? activeDataset.total_rows ?? 0} Transactions • {activeDataset.account_count ?? activeDataset.accounts_count ?? 0} Accounts
               </span>
+              {activeDataset.is_synthetic ? (
+                <span
+                  style={{
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "12px",
+                    backgroundColor: "#fef3c7",
+                    color: "#b45309",
+                    fontWeight: 700,
+                  }}
+                  title="This dataset was procedurally generated for benchmark evaluation. It does NOT represent real-world individuals or transactions."
+                >
+                  ⚠️ Synthetic Benchmark (Generated Data)
+                </span>
+              ) : (
+                <span
+                  style={{
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "12px",
+                    backgroundColor: "#eff6ff",
+                    color: "#1d4ed8",
+                    fontWeight: 700,
+                  }}
+                >
+                  User-Uploaded Dataset
+                </span>
+              )}
               {activeDataset.has_ground_truth_labels ? (
                 <span
                   style={{
@@ -349,11 +385,11 @@ export const FraudInvestigationPanel: React.FC<FraudInvestigationPanelProps> = (
                   style={{
                     padding: "0.15rem 0.5rem",
                     borderRadius: "12px",
-                    backgroundColor: "#fef3c7",
-                    color: "#b45309",
+                    backgroundColor: "var(--bg-muted)",
+                    color: "var(--text-muted)",
                   }}
                 >
-                  Unlabeled
+                  Unlabeled (Heuristic Graph Reasoning Only)
                 </span>
               )}
             </div>
@@ -520,30 +556,77 @@ export const FraudInvestigationPanel: React.FC<FraudInvestigationPanelProps> = (
       {/* ── Active Investigation Content ── */}
       {activeDataset && (
         <>
-          {/* Provenance & Read-Only Notice */}
+          {/* Comprehensive Provenance & Lineage Card */}
           <div
             style={{
-              padding: "0.65rem 1rem",
-              borderRadius: "6px",
-              backgroundColor: "rgba(37, 99, 235, 0.05)",
-              border: "1px solid rgba(37, 99, 235, 0.2)",
+              padding: "0.85rem 1rem",
+              borderRadius: "8px",
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
               fontSize: "0.76rem",
               color: "var(--text-secondary)",
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "0.5rem",
+              flexDirection: "column",
+              gap: "0.6rem",
             }}
           >
-            <div>
-              <strong style={{ color: "var(--text-primary)" }}>Provenance: </strong>
-              {activeDataset.provenance_note || "User-authorized transaction records."}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Database size={15} color="#2563eb" />
+                <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.82rem" }}>
+                  Dataset Provenance & Graph Isolation
+                </span>
+                <span style={{ fontFamily: "monospace", fontSize: "0.72rem", backgroundColor: "var(--bg-muted)", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>
+                  {activeDataset.dataset_id}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <ShieldCheck size={14} color="#16a34a" />
+                <span style={{ color: "#16a34a", fontWeight: 600 }}>Strict Read-Only Isolation</span>
+                <span style={{ color: "var(--text-muted)" }}>• FalkorDB Graph: <code>{activeDataset.graph_name}</code></span>
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <ShieldCheck size={14} color="#16a34a" />
-              <span style={{ color: "#16a34a", fontWeight: 600 }}>Read-Only Analysis</span>
-              <span style={{ color: "var(--text-muted)" }}>• No external write mutations</span>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                gap: "0.6rem",
+                padding: "0.5rem",
+                backgroundColor: "var(--bg-muted)",
+                borderRadius: "6px",
+              }}
+            >
+              <div>
+                <strong style={{ color: "var(--text-primary)" }}>Origin / Type: </strong>
+                {activeDataset.is_synthetic ? (
+                  <span style={{ color: "#b45309", fontWeight: 600 }}>Synthetic Benchmark (Procedural Fixture)</span>
+                ) : (
+                  <span style={{ color: "#1d4ed8", fontWeight: 600 }}>User Upload ({activeDataset.filename || "CSV/JSON"})</span>
+                )}
+              </div>
+              <div>
+                <strong style={{ color: "var(--text-primary)" }}>Import Timestamp: </strong>
+                {activeDataset.imported_at ? new Date(activeDataset.imported_at).toLocaleString() : "Initial Setup"}
+              </div>
+              <div>
+                <strong style={{ color: "var(--text-primary)" }}>Record Rows: </strong>
+                Total: {activeDataset.total_rows ?? activeDataset.record_count ?? 0} | Accepted: {activeDataset.accepted_rows ?? activeDataset.record_count ?? 0} | Rejected: {activeDataset.rejected_rows ?? 0}
+              </div>
+              <div>
+                <strong style={{ color: "var(--text-primary)" }}>Graph Schema: </strong>
+                {activeDataset.account_count ?? activeDataset.accounts_count ?? 0} Accounts • {activeDataset.record_count ?? activeDataset.total_rows ?? 0} Transactions
+              </div>
+            </div>
+
+            <div style={{ fontSize: "0.74rem", lineHeight: 1.4, color: "var(--text-muted)" }}>
+              <strong style={{ color: "var(--text-secondary)" }}>Provenance Note: </strong>
+              {activeDataset.provenance_note || activeDataset.data_provenance_note || "Ingested transaction network with isolated graph topology."}
+              {activeDataset.is_synthetic && (
+                <span style={{ color: "#b45309", marginLeft: "0.4rem" }}>
+                  (Notice: Synthetic benchmark data for AML detection verification; does not contain real PII or bank accounts).
+                </span>
+              )}
             </div>
           </div>
 

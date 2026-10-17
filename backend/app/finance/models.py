@@ -52,6 +52,33 @@ class FinancialDatasetMetadata(BaseModel):
     is_synthetic: bool = False
     data_provenance_note: str = "User-imported financial transaction dataset"
 
+    # Frontend compatibility & transparent provenance fields
+    dataset_name: Optional[str] = None
+    record_count: Optional[int] = None
+    account_count: Optional[int] = None
+    transaction_count: Optional[int] = None
+    imported_at: Optional[str] = None
+    has_ground_truth_labels: Optional[bool] = None
+    provenance_note: Optional[str] = None
+    data_limitations: List[str] = Field(default_factory=list)
+
+    def model_post_init(self, __context: Any) -> None:
+        super().model_post_init(__context)
+        if not self.dataset_name:
+            self.dataset_name = self.name
+        if self.record_count is None:
+            self.record_count = self.accepted_rows or self.total_rows
+        if self.account_count is None:
+            self.account_count = self.accounts_count
+        if self.transaction_count is None:
+            self.transaction_count = self.transactions_count
+        if not self.imported_at:
+            self.imported_at = self.created_at
+        if self.has_ground_truth_labels is None:
+            self.has_ground_truth_labels = self.has_ground_truth
+        if not self.provenance_note:
+            self.provenance_note = self.data_provenance_note
+
 
 class DatasetPreviewResponse(BaseModel):
     """Preliminary analysis of an uploaded file prior to ingestion."""

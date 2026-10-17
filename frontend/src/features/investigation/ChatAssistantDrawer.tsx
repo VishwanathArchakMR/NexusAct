@@ -138,16 +138,31 @@ export const ChatAssistantDrawer: React.FC<ChatAssistantDrawerProps> = ({
     onNavigateToTab(pTarget, ev.entity_id);
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  const currentProvider = lastResponse?.provider_status || "not_configured";
+  const currentProvider = lastResponse?.provider_status;
   const modelTitle =
     currentProvider === "gemini"
       ? `${lastResponse?.model_name || "Gemini"} (Live AI)`
+      : currentProvider === "fallback"
+      ? "Deterministic Cypher Grounding (Fallback)"
       : "FalkorDB Read-Only Cypher Engine";
 
   return (
     <div
+      role="dialog"
+      aria-label="NexusAct Graph Assistant Drawer"
       style={{
         position: "fixed",
         top: 0,
@@ -155,6 +170,9 @@ export const ChatAssistantDrawer: React.FC<ChatAssistantDrawerProps> = ({
         bottom: 0,
         width: "420px",
         maxWidth: "92vw",
+        height: "100vh",
+        maxHeight: "100vh",
+        boxSizing: "border-box",
         backgroundColor: "var(--bg-card, #ffffff)",
         borderLeft: "1px solid var(--border-subtle, #e2e8f0)",
         boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.12)",

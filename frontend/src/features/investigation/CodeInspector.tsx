@@ -108,8 +108,10 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
   useEffect(() => {
     if (activeTargetNodeId) {
       const cleanMod = activeTargetNodeId.replace(/^mod:/, "");
-      // If it looks like a module or path, find candidate file
-      const candidatePath = cleanMod.replace(/\./g, "/") + ".py";
+      let candidatePath = cleanMod.replace(/\\/g, "/");
+      if (!/\.[a-zA-Z0-9]+$/.test(candidatePath)) {
+        candidatePath = candidatePath.replace(/\./g, "/");
+      }
       if (candidatePath !== selectedFilePath) {
         handleSelectFile(candidatePath);
       }
@@ -144,7 +146,6 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
       setHighlightedRange(null);
       setSelectedSymbolName(null);
 
-
       // Add to recent files
       setRecentFiles((prev) => {
         const next = [filePath, ...prev.filter((p) => p !== filePath)];
@@ -166,8 +167,11 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
       try {
         const data = await fetchFileContent(repoId, filePath, startLine, endLine);
         setFileContent(data);
+        if (data.file_path && data.file_path !== filePath) {
+          setSelectedFilePath(data.file_path);
+        }
       } catch (err: any) {
-        setContentError(err?.message || `Failed to read file ${filePath}`);
+        setContentError(err?.message || `Source file '${filePath}' is not present in the current repository revision.`);
         setFileContent(null);
       } finally {
         setIsLoadingContent(false);

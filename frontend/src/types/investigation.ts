@@ -494,17 +494,33 @@ export interface PanelExplanationResponse {
 export interface FinancialDatasetMetadata {
   dataset_id: string;
   dataset_name: string;
+  name?: string;
   graph_name: string;
-  source_type: "csv_upload" | "json_upload" | "sample_benchmark" | "api_authorized";
+  source_type: "csv_upload" | "json_upload" | "sample_benchmark" | "api_authorized" | string;
   source_version?: string;
   record_count: number;
+  total_rows?: number;
+  accepted_rows?: number;
+  rejected_rows?: number;
   account_count: number;
+  accounts_count?: number;
   transaction_count: number;
+  transactions_count?: number;
+  devices_count?: number;
+  ip_addresses_count?: number;
+  merchants_count?: number;
   imported_at: string;
-  is_anonymized: boolean;
+  created_at?: string;
+  is_anonymized?: boolean;
   has_ground_truth_labels: boolean;
   provenance_note: string;
+  data_provenance_note?: string;
   data_limitations: string[];
+  filename?: string | null;
+  is_synthetic?: boolean;
+  source_hash?: string;
+  status?: string;
+  schema_mapping?: Record<string, string | null>;
 }
 
 export interface ColumnMapping {

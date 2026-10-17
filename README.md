@@ -10,15 +10,16 @@
 [![React](https://img.shields.io/badge/React-19.2-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/pytest-162%2F162%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/pytest-169%2F169%20passing-brightgreen)](./tests)
 [![Vitest](https://img.shields.io/badge/vitest-26%2F26%20passing-brightgreen)](./frontend/tests)
 
 > **FalkorDB Hackathon Submission**  
 > **Track:** *Agents That Act on Connected Data*  
 > **Primary Database:** FalkorDB v4.4.1 (Redis Protocol / Cypher)  
-> **Phase 23 Acceptance Matrix:** [`docs/PHASE23_ACCEPTANCE.md`](docs/PHASE23_ACCEPTANCE.md)  
-> **Phase 23 Final Report:** [`docs/PHASE23_FINAL_REPORT.md`](docs/PHASE23_FINAL_REPORT.md)  
-> **Phase 23 Baseline Audit:** [`docs/PHASE23_BASELINE.md`](docs/PHASE23_BASELINE.md)  
+> **Phase 24 Acceptance Record:** [`docs/PHASE24_ACCEPTANCE.md`](docs/PHASE24_ACCEPTANCE.md)  
+> **Phase 24 Final Report:** [`docs/PHASE24_FINAL_REPORT.md`](docs/PHASE24_FINAL_REPORT.md)  
+> **Phase 24 Baseline Audit:** [`docs/PHASE24_BASELINE.md`](docs/PHASE24_BASELINE.md)  
+> **Architecture Specification:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)  
 > **Hackathon Submission Checklist:** [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md)  
 > **Live Demo Walkthrough:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)  
 
@@ -153,8 +154,8 @@ NexusAct maintains strict logical and physical graph isolation in FalkorDB:
 | **Tool Protocol** | Model Context Protocol (`mcp`) SDK | `2.3.0` |
 | **Frontend UI** | React 19, TypeScript Strict, Vite | `19.2.8` / `6.0.2` / `8.3.4` |
 | **LLM Provider** | Google Gemini 2.5 Flash / Deterministic Fallback | Official `google-genai` SDK |
-| **Python Tests** | Pytest (Integration, Regression, Unit) | **162/162 passing** (66s) |
-| **Frontend Tests**| Vitest (Testing Library, React 19) | **26/26 passing** (6s) |
+| **Python Tests** | Pytest (Integration, Regression, Unit) | **169/169 passing** (66s) |
+| **Frontend Tests**| Vitest (Testing Library, React 19) | **26/26 passing** (14s) |
 | **Linters & Typers** | Ruff, Mypy, Oxlint | **0 errors, 0 warnings across all files** |
 
 ---
@@ -185,10 +186,10 @@ NexusAct maintains strict logical and physical graph isolation in FalkorDB:
 ```powershell
 # Backend linter & type checks
 .\.venv\Scripts\ruff.exe check .
-.\.venv\Scripts\ruff.exe format --check backend tests mcp_server
+.\.venv\Scripts\ruff.exe format --check .
 .\.venv\Scripts\mypy.exe backend mcp_server
 
-# Backend test suite (162 tests)
+# Backend test suite (169 tests)
 .\.venv\Scripts\pytest.exe -q
 
 # Frontend checks & tests (26 tests)
