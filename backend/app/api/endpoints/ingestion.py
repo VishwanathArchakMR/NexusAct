@@ -72,9 +72,7 @@ def _public_demo_ingest_guard(request: Request) -> Generator[None, None, None]:
         if len(_PUBLIC_INGEST_REQUESTS) > 2048:
             cutoff = now - _PUBLIC_INGEST_WINDOW_SECONDS
             stale_keys = [
-                key
-                for key, timestamps in _PUBLIC_INGEST_REQUESTS.items()
-                if not timestamps or max(timestamps) < cutoff
+                key for key, timestamps in _PUBLIC_INGEST_REQUESTS.items() if not timestamps or max(timestamps) < cutoff
             ]
             for key in stale_keys:
                 _PUBLIC_INGEST_REQUESTS.pop(key, None)
