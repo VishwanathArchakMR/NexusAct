@@ -229,6 +229,13 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
       setReport(null);
       setSelectedModule("");
       setError(null);
+      setSourceMetadata(null);
+      setSnapshot(null);
+      setModules([]);
+      setSubgraph(null);
+      setStandaloneSim(null);
+      setReviewersData(null);
+      setInspectorFilePath("");
       (async () => {
         await Promise.all([
           loadSnapshot(selectedRepoId),

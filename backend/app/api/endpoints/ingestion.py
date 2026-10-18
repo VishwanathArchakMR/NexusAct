@@ -442,6 +442,18 @@ def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
             repo_id=record.id,
             github_metadata=github_meta,
         )
+        record.commit_sha = commit_sha
+        record.module_count = report.module_count
+        record.edge_count = report.import_edge_count
+        record.commit_count = report.commit_count
+        record.contributor_count = report.contributor_count
+        record.last_ingested_at = report.ingested_at
+        record.status = "INGESTED"
+        record.freshness_status = "FRESH"
+        short_sha = (commit_sha or "HEAD")[:8]
+        slug = record.id.replace("repo:", "")
+        record.active_snapshot_id = f"snap_{slug}_{short_sha}"
+        repo_registry.update_repository(record)
         return report
     except Exception as e:
         logger.error("Ingestion failed: %s", e)
@@ -515,6 +527,17 @@ async def upload_zip_repository(
             graph_name=record.graph_name,
             repo_id=record.id,
         )
+        record.commit_sha = report.commit_sha or "ZIP_ARCHIVE"
+        record.module_count = report.module_count
+        record.edge_count = report.import_edge_count
+        record.commit_count = report.commit_count
+        record.contributor_count = report.contributor_count
+        record.last_ingested_at = report.ingested_at
+        record.status = "INGESTED"
+        record.freshness_status = "FRESH"
+        slug = record.id.replace("repo:", "")
+        record.active_snapshot_id = f"snap_{slug}_zip"
+        repo_registry.update_repository(record)
         return report
     except HTTPException:
         shutil.rmtree(extract_dir, ignore_errors=True)
@@ -670,7 +693,7 @@ def get_file_tree(
     if not record:
         raise HTTPException(status_code=404, detail=f"Repository '{repo_id}' not found.")
 
-    if record.source_type == SourceType.LOCAL:
+    if record.source_type in (SourceType.LOCAL, SourceType.ARCHIVE):
         base_dir = Path(record.url_or_path).resolve()
     else:
         fetcher = GitHubRepoFetcher()
@@ -816,7 +839,7 @@ def get_file_content(
     if not record:
         raise HTTPException(status_code=404, detail=f"Repository '{repo_id}' not found.")
 
-    if record.source_type == SourceType.LOCAL:
+    if record.source_type in (SourceType.LOCAL, SourceType.ARCHIVE):
         base_dir = Path(record.url_or_path).resolve()
     else:
         fetcher = GitHubRepoFetcher()

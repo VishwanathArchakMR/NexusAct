@@ -176,8 +176,8 @@ class SourceFreshnessService:
         except Exception:
             graph_healthy = False
 
-        # --- LOCAL REPOSITORY FRESHNESS ---
-        if record.source_type == SourceType.LOCAL:
+        # --- LOCAL OR ARCHIVE REPOSITORY FRESHNESS ---
+        if record.source_type in (SourceType.LOCAL, SourceType.ARCHIVE):
             local_path = Path(record.url_or_path).resolve()
             if not local_path.exists():
                 record.freshness_status = "STALE_SOURCE_UNAVAILABLE"
@@ -185,12 +185,13 @@ class SourceFreshnessService:
                 return record.to_snapshot()
 
             commit_sha, current_fp = compute_working_tree_fingerprint(local_path)
-            record.commit_sha = commit_sha
+            if record.source_type != SourceType.ARCHIVE or commit_sha != "HEAD":
+                record.commit_sha = commit_sha
 
             needs_reingestion = (
                 force_refresh
                 or not graph_healthy
-                or record.working_tree_fingerprint != current_fp
+                or (record.working_tree_fingerprint and record.working_tree_fingerprint != current_fp)
                 or record.status != "INGESTED"
             )
 
@@ -200,10 +201,8 @@ class SourceFreshnessService:
                 return record.to_snapshot()
 
             logger.info(
-                "Local repository %s source changed (fp: %s -> %s) or needs refresh. Ingesting...",
+                "Local/Archive repository %s source changed or needs refresh. Ingesting...",
                 record.id,
-                record.working_tree_fingerprint,
-                current_fp,
             )
             try:
                 report = self.engine.ingest(
@@ -229,13 +228,23 @@ class SourceFreshnessService:
                 repo_registry.update_repository(record)
                 return record.to_snapshot()
             except Exception as e:
-                logger.error("Failed to re-ingest local repository %s: %s", record.id, e)
+                logger.error("Failed to re-ingest local/archive repository %s: %s", record.id, e)
                 record.freshness_status = "INGESTION_FAILED"
                 repo_registry.update_repository(record)
                 return record.to_snapshot()
 
         # --- GITHUB REPOSITORY FRESHNESS ---
         elif record.source_type == SourceType.GITHUB:
+            # If already ingested, graph is healthy, and recently verified, return fresh snapshot directly
+            if not force_refresh and record.status == "INGESTED" and graph_healthy and record.source_checked_at:
+                try:
+                    last_check = datetime.fromisoformat(record.source_checked_at)
+                    now_dt = datetime.now(timezone.utc)
+                    if (now_dt - last_check).total_seconds() < 60:
+                        return record.to_snapshot()
+                except Exception:
+                    pass
+
             github_url_str = record.canonical_source or record.url_or_path
             try:
                 val_url = PublicGitHubUrl.parse_and_validate(github_url_str)
@@ -243,6 +252,8 @@ class SourceFreshnessService:
                 logger.error("Invalid GitHub URL for %s: %s", record.id, e)
                 record.freshness_status = "SNAPSHOT_UNRESOLVED"
                 repo_registry.update_repository(record)
+                return record.to_snapshot()
+
             try:
                 remote_sha = query_remote_github_head(val_url.canonical_url)
             except Exception as e:

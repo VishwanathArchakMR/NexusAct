@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -56,17 +57,32 @@ class RepositoryRegistry:
                 for repo_data in data:
                     rec = RepositoryRecord.model_validate(repo_data)
                     self._repositories[rec.id] = rec
-                logger.info("Loaded %d repository record(s) from %s", len(self._repositories), self.registry_file)
+                logger.debug("Loaded %d repository record(s) from %s", len(self._repositories), self.registry_file)
             except Exception as e:
                 logger.warning("Failed reading repository registry file %s: %s", self.registry_file, e)
 
     def _save(self) -> None:
-        """Persists repository records to cache file."""
+        """Persists repository records to cache file atomically with merge."""
         try:
+            # First merge any records written to disk by other workers/processes
+            if self.registry_file.exists():
+                try:
+                    disk_data = json.loads(self.registry_file.read_text(encoding="utf-8"))
+                    for repo_data in disk_data:
+                        rec = RepositoryRecord.model_validate(repo_data)
+                        if rec.id not in self._repositories:
+                            self._repositories[rec.id] = rec
+                except Exception as read_err:
+                    logger.debug("Could not pre-merge registry file %s: %s", self.registry_file, read_err)
+
             records = [r.model_dump() for r in self._repositories.values()]
-            self.registry_file.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            # Write atomically to a PID-tagged temp file then replace target file
+            temp_file = self.registry_file.with_name(f"{self.registry_file.name}.tmp.{os.getpid()}")
+            temp_file.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            temp_file.replace(self.registry_file)
         except Exception as e:
             logger.error("Failed saving repository registry file %s: %s", self.registry_file, e)
+            raise RuntimeError(f"Failed to persist repository registry to {self.registry_file}: {e}") from e
 
     def _ensure_default_local_repo(self) -> None:
         """Ensures the active local workspace repository is always registered with primary graph."""
@@ -98,21 +114,36 @@ class RepositoryRegistry:
             self._save()
 
     def list_repositories(self) -> List[RepositoryRecord]:
-        """Returns all registered repositories."""
+        """Returns all registered repositories, refreshing from disk first."""
+        self._load()
         return list(self._repositories.values())
 
     def get_repository(self, repo_id_or_graph: str) -> Optional[RepositoryRecord]:
-        """Looks up a repository by ID, graph name, or path/URL."""
-        # 1. Direct ID match
+        """Looks up a repository by ID, graph name, or path/URL, reloading on cache miss."""
+        # 1. Direct ID match in memory
         if repo_id_or_graph in self._repositories:
             return self._repositories[repo_id_or_graph]
 
-        # 2. Match by graph name
+        # 2. Match by graph name in memory
         for r in self._repositories.values():
             if r.graph_name == repo_id_or_graph:
                 return r
 
-        # 3. Match by path or url
+        # 3. Match by path or url in memory
+        for r in self._repositories.values():
+            if r.url_or_path.lower() == repo_id_or_graph.strip().lower():
+                return r
+
+        # Cache miss: reload from disk in case another process/worker registered it
+        self._load()
+
+        if repo_id_or_graph in self._repositories:
+            return self._repositories[repo_id_or_graph]
+
+        for r in self._repositories.values():
+            if r.graph_name == repo_id_or_graph:
+                return r
+
         for r in self._repositories.values():
             if r.url_or_path.lower() == repo_id_or_graph.strip().lower():
                 return r

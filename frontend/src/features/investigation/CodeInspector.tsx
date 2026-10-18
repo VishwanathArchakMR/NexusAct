@@ -75,6 +75,15 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
   // Load tree when repoId changes
   useEffect(() => {
     let isMounted = true;
+    setSelectedFilePath("");
+    setFileContent(null);
+    setRecentFiles([]);
+    setTreeData([]);
+    setTreeError(null);
+    setContentError(null);
+    setHighlightedRange(null);
+    setSelectedSymbolName(null);
+
     async function loadTree() {
       setIsLoadingTree(true);
       setTreeError(null);
@@ -83,12 +92,9 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
         if (isMounted) {
           setTreeData(resp.tree);
           setTotalFiles(resp.total_files);
-          // If no file is selected yet, pick a sensible first file (e.g. backend/app/main.py or first file in tree)
-          if (!selectedFilePath) {
-            const first = findFirstFile(resp.tree);
-            if (first) {
-              handleSelectFile(first.path);
-            }
+          const first = findFirstFile(resp.tree);
+          if (first) {
+            handleSelectFile(first.path);
           }
         }
       } catch (err: any) {
@@ -101,6 +107,9 @@ export const CodeInspector: React.FC<CodeInspectorProps> = ({
     }
 
     loadTree();
+    return () => {
+      isMounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoId]);
 
