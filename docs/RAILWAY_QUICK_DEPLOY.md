@@ -21,4 +21,8 @@ The backend seeds a small fictional graph only when the configured primary graph
 
 ## Safety and cost
 
-Only the gateway should be public. Do not add a public domain or TCP proxy to FalkorDB or backend. Keep `PUBLIC_DEMO_MODE=true`. Do not import or copy the developer's local graph. Railway's trial uses limited credits, so monitor the usage balance and stop unneeded services after judging.
+Only the gateway should be public. Do not add a public domain or TCP proxy to FalkorDB or backend. Keep `PUBLIC_DEMO_MODE=true`. Do not import or copy the developer's local graph.
+
+In public demo mode, visitors can ingest **public GitHub HTTPS repository URLs only** via `POST /api/v1/ingest/clone-and-ingest`. The server rejects local filesystem paths and non-GitHub hosts, preflights public visibility and repository size (maximum 100 MB), uses shallow clone depth 1 with a 90-second clone timeout, allows at most 8 ingestion requests per client IP per 10 minutes, and caps concurrent public ingestions at 2. Public demo mode continues to block arbitrary registration, local repository ingestion, financial file writes/deletion, and external action execution. GitHub API rate limits may temporarily prevent preflight; retry later. These controls mitigate, but do not eliminate, risks from unauthenticated public ingestion.
+
+Railway's trial uses limited credits, so monitor the usage balance and stop unneeded services after judging.

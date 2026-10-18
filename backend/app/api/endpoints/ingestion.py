@@ -3,10 +3,13 @@
 import ast
 import logging
 import re
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import settings
@@ -28,6 +31,147 @@ from backend.app.sources.registry import repo_registry
 
 logger = logging.getLogger("nexusact.api.ingestion")
 router = APIRouter(prefix="/ingest", tags=["Repository Ingestion"])
+
+# Public judging demo limits: accept public GitHub repositories only, with bounded resource use.
+_PUBLIC_GITHUB_REPO_MAX_SIZE_KB = 100_000
+_PUBLIC_INGEST_WINDOW_SECONDS = 600.0
+_PUBLIC_INGEST_MAX_PER_IP = 8
+_PUBLIC_INGEST_LOCK = threading.Lock()
+_PUBLIC_INGEST_REQUESTS: Dict[str, List[float]] = {}
+_PUBLIC_INGEST_SLOTS = threading.BoundedSemaphore(value=2)
+
+
+def _public_demo_ingest_guard(request: Request) -> Generator[None, None, None]:
+    """Apply a short per-client rate limit and cap concurrent public repository ingestions."""
+    if not settings.PUBLIC_DEMO_MODE:
+        yield
+        return
+
+    # Caddy appends the client address to X-Forwarded-For; the backend is private behind this gateway.
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",")[-1].strip() if forwarded_for else ""
+    if not client_ip:
+        client_ip = request.client.host if request.client else "unknown"
+
+    now = time.monotonic()
+    with _PUBLIC_INGEST_LOCK:
+        recent = [
+            timestamp
+            for timestamp in _PUBLIC_INGEST_REQUESTS.get(client_ip, [])
+            if now - timestamp < _PUBLIC_INGEST_WINDOW_SECONDS
+        ]
+        if len(recent) >= _PUBLIC_INGEST_MAX_PER_IP:
+            raise HTTPException(
+                status_code=429,
+                detail="Public repository ingestion rate limit reached. Please wait a few minutes and retry.",
+            )
+        recent.append(now)
+        _PUBLIC_INGEST_REQUESTS[client_ip] = recent
+
+        # Keep the in-memory limiter bounded if the service sees many distinct clients.
+        if len(_PUBLIC_INGEST_REQUESTS) > 2048:
+            cutoff = now - _PUBLIC_INGEST_WINDOW_SECONDS
+            stale_keys = [
+                key
+                for key, timestamps in _PUBLIC_INGEST_REQUESTS.items()
+                if not timestamps or max(timestamps) < cutoff
+            ]
+            for key in stale_keys:
+                _PUBLIC_INGEST_REQUESTS.pop(key, None)
+
+    if not _PUBLIC_INGEST_SLOTS.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="The demo is processing other repositories. Please retry in a moment.",
+        )
+    try:
+        yield
+    finally:
+        _PUBLIC_INGEST_SLOTS.release()
+
+
+def _check_public_github_repo_size(url: PublicGitHubUrl) -> None:
+    """Check GitHub's repository metadata before cloning to reject private/oversized sources."""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"NexusAct/{settings.APP_VERSION}",
+    }
+    if settings.GITHUB_TOKEN.strip():
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN.strip()}"
+
+    try:
+        response = httpx.get(
+            f"https://api.github.com/repos/{url.owner}/{url.repo}",
+            headers=headers,
+            timeout=8.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Public GitHub repository preflight failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not verify the public GitHub repository. Please retry shortly.",
+        ) from exc
+
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="GitHub repository not found or is not public.")
+    if response.status_code in (403, 429):
+        raise HTTPException(
+            status_code=503,
+            detail="GitHub API rate limit reached. Please retry in a few minutes.",
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"GitHub repository preflight returned HTTP {response.status_code}.",
+        )
+
+    try:
+        size_kb = int(response.json().get("size", 0))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="GitHub returned invalid repository metadata.") from exc
+
+    if size_kb > _PUBLIC_GITHUB_REPO_MAX_SIZE_KB:
+        raise HTTPException(
+            status_code=413,
+            detail="This public demo accepts repositories up to 100 MB. Please try a smaller repository.",
+        )
+
+
+def _validate_public_demo_ingestion_request(payload: "OnboardRepoRequest") -> PublicGitHubUrl:
+    """In public demo mode, permit only validated public GitHub URLs or existing GitHub records."""
+    if payload.repo_id:
+        record = repo_registry.get_repository(payload.repo_id)
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Repository '{payload.repo_id}' not found.")
+        if record.source_type != SourceType.GITHUB:
+            raise HTTPException(
+                status_code=403,
+                detail="Public demo mode only permits HTTPS URLs for public GitHub repositories.",
+            )
+        raw_url = record.canonical_source or record.url_or_path
+    elif payload.url_or_path:
+        source_type = payload.source_type or (
+            SourceType.GITHUB if payload.url_or_path.strip().lower().startswith("https://") else SourceType.LOCAL
+        )
+        if source_type != SourceType.GITHUB:
+            raise HTTPException(
+                status_code=403,
+                detail="Public demo mode only permits HTTPS URLs for public GitHub repositories.",
+            )
+        raw_url = payload.url_or_path
+    else:
+        raise HTTPException(status_code=400, detail="Must provide a public GitHub URL or an existing GitHub repository ID.")
+
+    try:
+        validated_url = PublicGitHubUrl.parse_and_validate(raw_url)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Public demo mode only accepts public GitHub HTTPS URLs: {exc}",
+        ) from exc
+
+    _check_public_github_repo_size(validated_url)
+    return validated_url
 
 
 class IngestRequest(BaseModel):
@@ -118,17 +262,15 @@ def register_repository(payload: RegisterRepositoryRequest) -> RepositoryRecord:
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 
-@router.post("/clone-and-ingest", response_model=IngestionReport)
+@router.post(
+    "/clone-and-ingest",
+    response_model=IngestionReport,
+    dependencies=[Depends(_public_demo_ingest_guard)],
+)
 def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
-    """Safely clones a public GitHub repo (or reads local path) and ingests it into an isolated graph."""
+    """Safely ingests GitHub repositories; public demo mode permits only bounded public HTTPS sources."""
     if settings.PUBLIC_DEMO_MODE:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Repository onboarding and cloning are disabled in public demo mode. "
-                "Preloaded graphs are available for exploration."
-            ),
-        )
+        _validate_public_demo_ingestion_request(payload)
     # 1. Resolve or register repository record
     record: Optional[RepositoryRecord] = None
     if payload.repo_id:
@@ -163,7 +305,11 @@ def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
         try:
             val_url = PublicGitHubUrl.parse_and_validate(record.url_or_path)
             fetcher = GitHubRepoFetcher()
-            checkout_path, commit_sha = fetcher.clone_or_update(val_url)
+            if settings.PUBLIC_DEMO_MODE:
+                # Shallow checkout and strict timeout reduce CPU, disk, and bandwidth use for public visitors.
+                checkout_path, commit_sha = fetcher.clone_or_update(val_url, depth=1, timeout_seconds=90)
+            else:
+                checkout_path, commit_sha = fetcher.clone_or_update(val_url)
             record.commit_sha = commit_sha
 
             # Collect public GitHub metadata (PRs and reviews)
