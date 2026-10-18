@@ -28,8 +28,18 @@ def _extract_hosts_from_origins(origins: List[str]) -> List[str]:
             hosts.add(parsed.hostname)
             if parsed.port:
                 hosts.add(f"{parsed.hostname}:{parsed.port}")
-    # Always allow localhost variants, internal docker hostnames, and test client
-    hosts.update(["localhost", "127.0.0.1", "backend", "testserver", "localhost:8000", "127.0.0.1:8000"])
+    # Local/test/internal hosts plus Railway's fixed health-check host. No wildcard hosts.
+    hosts.update(
+        [
+            "localhost",
+            "127.0.0.1",
+            "backend",
+            "testserver",
+            "localhost:8000",
+            "127.0.0.1:8000",
+            "healthcheck.railway.app",
+        ]
+    )
     return list(hosts)
 
 
@@ -50,6 +60,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # Idempotently ensure base indices and metadata exist
             init_res = initialize_schema(graph_client)
             logger.info("Primary schema initialization: %s", init_res["status"])
+            if settings.PUBLIC_DEMO_MODE:
+                # Seed only an empty graph; existing graph data is never deleted or overwritten.
+                try:
+                    from backend.app.graph.public_demo_seed import seed_public_demo_graph
+
+                    seed_summary = seed_public_demo_graph(graph_client)
+                    logger.info("Public demo graph bootstrap: %s", seed_summary)
+                except Exception as seed_exc:
+                    logger.warning("Public demo graph bootstrap skipped/failed: %s", seed_exc)
         except Exception as exc:
             logger.warning("FalkorDB schema initialization warning: %s", exc)
     else:

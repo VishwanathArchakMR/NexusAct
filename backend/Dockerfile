@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Create non-root application user ─────────────────────────────────────────
-RUN addgroup --system nexusact && adduser --system --ingroup nexusact nexusact
+RUN addgroup --system nexusact && adduser --system --ingroup nexusact --home /home/nexusact nexusact
 
 WORKDIR /app
 
@@ -43,7 +43,8 @@ USER nexusact
 # ── Runtime configuration ─────────────────────────────────────────────────────
 # All values are overridden via environment variables or secrets at runtime.
 # These defaults are safe for local container use ONLY.
-ENV APP_ENV=production \
+ENV HOME=/home/nexusact \
+    APP_ENV=production \
     BACKEND_HOST=0.0.0.0 \
     BACKEND_PORT=8000 \
     FALKORDB_HOST=falkordb \
