@@ -4,14 +4,14 @@ This deployment uses separate Railway services because Railway does not run the 
 
 ## Services to create
 
-Use the repository `VishwanathArchakMR/NexusAct`, branch `railway/quick-public-demo`.
+Use the repository `VishwanathArchakMR/NexusAct`, branch `master`.
 
 1. **falkordb** — choose Docker Image `falkordb/falkordb:v4.4.1`. No public domain or TCP proxy. Attach a persistent volume at `/data`. Set `BROWSER=0` and `REDIS_ARGS=--appendonly yes --appendfsync everysec`.
 2. **backend** — GitHub repository, root directory left blank (repository root), Dockerfile path `backend/Dockerfile`. Keep the existing root `/railway.json` for this current backend service, or set the equivalent build settings manually if Config as Code is disabled. Health check `/health`. Do not create a public domain.
    Variables: `APP_ENV=production`, `PUBLIC_DEMO_MODE=true`, `FALKORDB_HOST=${{falkordb.RAILWAY_PRIVATE_DOMAIN}}`, `FALKORDB_PORT=6379`, `FALKORDB_PRIMARY_GRAPH=nexusact_main`, `CORS_ORIGINS=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}`, `LLM_PROVIDER=none`, `LOG_LEVEL=INFO`. If Railway has not automatically set `PORT`, use `PORT=8000`. AI keys are optional for the fallback demo.
 3. **frontend** — same GitHub repository and branch, root directory `/frontend`, Dockerfile path `Dockerfile`. Health check `/`. Set build variable `VITE_API_BASE_URL` to an empty string so requests use the same origin. If a Config File Path option is available, select `/frontend/railway.json`; otherwise configure the build/health check directly in Settings.
-4. **gateway** — same repository and branch, repository root as root directory, Dockerfile path `gateway/Dockerfile`. Only this service gets a public domain; target port `80`. Health check `/gateway-health`. If a Config File Path option is available, use `/gateway/railway.json`; otherwise configure the build/health check directly in Settings.
-   Variables: `BACKEND_UPSTREAM=${{backend.RAILWAY_PRIVATE_DOMAIN}}:8000` and `FRONTEND_UPSTREAM=${{frontend.RAILWAY_PRIVATE_DOMAIN}}:80`.
+4. **gateway** — same repository and branch, Root Directory `/gateway`, Builder `Dockerfile`, Dockerfile Path `Dockerfile`. The gateway folder contains its own Dockerfile and Caddyfile, so no Config-as-code path is required. Only this service gets a public domain; target port `80`. Health check `/gateway-health`. Configure the health check path `/gateway-health` directly in Settings; avoid the deprecated Config-as-code screen.
+   Variables: `BACKEND_UPSTREAM=${{NexusAct.RAILWAY_PRIVATE_DOMAIN}}:8000` and `FRONTEND_UPSTREAM=${{frontend.RAILWAY_PRIVATE_DOMAIN}}:80`.
 
 ## Order
 

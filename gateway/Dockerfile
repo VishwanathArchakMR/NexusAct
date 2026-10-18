@@ -1,4 +1,5 @@
 FROM caddy:2.9-alpine
-# Build context must be the repository root so the shared Caddyfile can be copied.
+# This service is built with Railway Root Directory set to /gateway,
+# so the build context contains this service's own Caddyfile.
 COPY Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
