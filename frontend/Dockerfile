@@ -12,7 +12,8 @@
 FROM node:22-alpine AS builder
 
 # Build-time argument so Vite can embed the backend API URL at compile time.
-ARG VITE_API_BASE_URL=http://localhost:8000
+# Same-origin API by default; public production traffic is routed by the gateway.
+ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 WORKDIR /app
