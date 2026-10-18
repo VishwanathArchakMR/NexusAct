@@ -345,7 +345,11 @@ def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 
-@router.post("/refresh/{repo_id}", response_model=IngestionReport)
+@router.post(
+    "/refresh/{repo_id}",
+    response_model=IngestionReport,
+    dependencies=[Depends(_public_demo_ingest_guard)],
+)
 def refresh_repository(repo_id: str) -> IngestionReport:
     """Refreshes a registered repository to its latest commit."""
     return clone_and_ingest(OnboardRepoRequest(repo_id=repo_id))
