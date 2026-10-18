@@ -160,6 +160,23 @@ export async function cloneAndIngest(payload: {
   return handleResponse<IngestionReport>(res, "Repository clone and ingestion failed");
 }
 
+export async function uploadZipRepository(
+  file: File,
+  displayName?: string
+): Promise<IngestionReport> {
+  const url = `${config.apiBaseUrl}/api/v1/ingest/upload-zip`;
+  const formData = new FormData();
+  formData.append("file", file);
+  if (displayName) {
+    formData.append("display_name", displayName);
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse<IngestionReport>(res, "Repository archive upload and ingestion failed");
+}
+
 export async function refreshRepository(repoId: string): Promise<IngestionReport> {
   const url = `${config.apiBaseUrl}/api/v1/ingest/refresh/${encodeURIComponent(repoId)}`;
   const res = await fetch(url, { method: "POST" });

@@ -1,15 +1,19 @@
 """Repository ingestion and multi-repository management API endpoints."""
 
 import ast
+import io
 import logging
 import re
+import shutil
 import threading
 import time
+import uuid
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import settings
@@ -27,7 +31,7 @@ from backend.app.sources.models import (
     SourceSnapshot,
     SourceType,
 )
-from backend.app.sources.registry import repo_registry
+from backend.app.sources.registry import get_cache_root, repo_registry
 
 logger = logging.getLogger("nexusact.api.ingestion")
 router = APIRouter(prefix="/ingest", tags=["Repository Ingestion"])
@@ -174,6 +178,104 @@ def _validate_public_demo_ingestion_request(payload: "OnboardRepoRequest") -> Pu
 
     _check_public_github_repo_size(validated_url)
     return validated_url
+
+
+# Conservative limits suitable for public free-tier demo
+_MAX_ZIP_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+_MAX_ZIP_EXTRACTED_SIZE = 200 * 1024 * 1024  # 200 MB
+_MAX_ZIP_ENTRIES = 20_000
+_MAX_RETAINED_UPLOADS = 10
+
+
+def _safe_extract_zip(zip_bytes: bytes, target_dir: Path) -> Path:
+    """Safely validates and extracts a zip archive into target_dir.
+
+    Guards against:
+    - Zip Slip / path traversal
+    - Zip bombs (entry count and uncompressed size)
+    - Symlinks / special files
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except (zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or corrupted ZIP archive: {exc}",
+        ) from exc
+
+    infolist = zf.infolist()
+    if len(infolist) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded ZIP archive is empty.",
+        )
+
+    if len(infolist) > _MAX_ZIP_ENTRIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ZIP archive contains {len(infolist)} entries, exceeding maximum allowed {_MAX_ZIP_ENTRIES}.",
+        )
+
+    total_uncompressed = sum(info.file_size for info in infolist)
+    if total_uncompressed > _MAX_ZIP_EXTRACTED_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uncompressed archive size ({total_uncompressed // (1024 * 1024)} MB) exceeds 200 MB limit.",
+        )
+
+    target_dir_resolved = target_dir.resolve()
+    target_dir_resolved.mkdir(parents=True, exist_ok=True)
+
+    for member in infolist:
+        name = member.filename
+        if name.startswith(("/", "\\")) or (len(name) > 1 and name[1] == ":"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid entry path in ZIP archive: '{name}'.",
+            )
+        is_symlink = (member.external_attr >> 16) & 0o120000 == 0o120000
+        if is_symlink:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archive contains symlink '{name}', which is rejected for security.",
+            )
+
+        resolved_entry = (target_dir_resolved / name).resolve()
+        try:
+            resolved_entry.relative_to(target_dir_resolved)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Archive contains illegal path traversal sequence.",
+            ) from exc
+
+    for member in infolist:
+        resolved_entry = (target_dir_resolved / member.filename).resolve()
+        if member.is_dir():
+            resolved_entry.mkdir(parents=True, exist_ok=True)
+        else:
+            resolved_entry.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(resolved_entry, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+    children = [c for c in target_dir_resolved.iterdir() if not c.name.startswith(".")]
+    if len(children) == 1 and children[0].is_dir():
+        return children[0]
+    return target_dir_resolved
+
+
+def _prune_old_uploads(uploads_dir: Path, keep: int = _MAX_RETAINED_UPLOADS) -> None:
+    """Keeps the upload cache directory bounded in size."""
+    try:
+        if not uploads_dir.exists():
+            return
+        dirs = [d for d in uploads_dir.iterdir() if d.is_dir()]
+        if len(dirs) > keep:
+            dirs.sort(key=lambda d: d.stat().st_mtime)
+            for old_dir in dirs[: len(dirs) - keep]:
+                shutil.rmtree(old_dir, ignore_errors=True)
+    except Exception as exc:
+        logger.warning("Failed pruning upload cache directory: %s", exc)
 
 
 class IngestRequest(BaseModel):
@@ -354,6 +456,73 @@ def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
 def refresh_repository(repo_id: str) -> IngestionReport:
     """Refreshes a registered repository to its latest commit."""
     return clone_and_ingest(OnboardRepoRequest(repo_id=repo_id))
+
+
+@router.post(
+    "/upload-zip",
+    response_model=IngestionReport,
+    dependencies=[Depends(_public_demo_ingest_guard)],
+)
+async def upload_zip_repository(
+    file: UploadFile = File(..., description="Repository ZIP archive"),
+    display_name: Optional[str] = Form(None, description="Optional display name"),
+) -> IngestionReport:
+    """Safely extracts and ingests an uploaded local Git repository ZIP archive into an isolated FalkorDB graph."""
+    filename = file.filename or "repository.zip"
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .zip archive format is supported.",
+        )
+
+    content = bytearray()
+    chunk_size = 64 * 1024
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > _MAX_ZIP_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="Uploaded ZIP file exceeds the maximum allowed size of 50 MB.",
+            )
+
+    if len(content) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded ZIP file is empty.",
+        )
+
+    upload_id = f"upload_{uuid.uuid4().hex[:12]}"
+    uploads_dir = get_cache_root() / "uploads"
+    extract_dir = uploads_dir / upload_id
+
+    _prune_old_uploads(uploads_dir)
+
+    try:
+        repo_root = _safe_extract_zip(bytes(content), extract_dir)
+        raw_name = Path(filename).stem
+        record = repo_registry.register_archive_repository(
+            extracted_path=str(repo_root),
+            archive_name=raw_name,
+            display_name=display_name,
+        )
+
+        engine = RepositoryIngestionEngine(graph_client)
+        report = engine.ingest(
+            repo_path=str(repo_root),
+            graph_name=record.graph_name,
+            repo_id=record.id,
+        )
+        return report
+    except HTTPException:
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        raise
+    except Exception as e:
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        logger.error("ZIP ingestion failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to ingest ZIP repository: {str(e)}")
 
 
 @router.get("/repositories", response_model=List[RepositoryRecord])

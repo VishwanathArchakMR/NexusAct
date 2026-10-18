@@ -18,6 +18,7 @@ import {
   triggerIngestion,
   fetchRepositories,
   cloneAndIngest,
+  uploadZipRepository,
   refreshRepository,
   fetchSourceMetadata,
   fetchRepositorySnapshot,
@@ -113,8 +114,9 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
 
   // Onboard repository modal state
   const [showOnboardModal, setShowOnboardModal] = useState<boolean>(false);
-  const [onboardType, setOnboardType] = useState<"github" | "local">("github");
+  const [onboardType, setOnboardType] = useState<"github" | "zip" | "local">("github");
   const [onboardUrlOrPath, setOnboardUrlOrPath] = useState<string>("");
+  const [onboardFile, setOnboardFile] = useState<File | null>(null);
   const [onboardDisplayName, setOnboardDisplayName] = useState<string>("");
   const [isOnboarding, setIsOnboarding] = useState<boolean>(false);
   const [onboardError, setOnboardError] = useState<string | null>(null);
@@ -285,26 +287,46 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
 
   const handleOnboardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onboardUrlOrPath.trim()) return;
+    if (onboardType === "zip") {
+      if (!onboardFile) {
+        setOnboardError("Please select a .zip repository archive to upload.");
+        return;
+      }
+      if (onboardFile.size > 50 * 1024 * 1024) {
+        setOnboardError("The selected file exceeds the 50 MB limit.");
+        return;
+      }
+    } else {
+      if (!onboardUrlOrPath.trim()) return;
+    }
 
     setIsOnboarding(true);
     setOnboardError(null);
     try {
-      const res = await cloneAndIngest({
-        url_or_path: onboardUrlOrPath.trim(),
-        source_type: onboardType,
-        display_name: onboardDisplayName.trim() || undefined,
-      });
+      let res;
+      if (onboardType === "zip" && onboardFile) {
+        res = await uploadZipRepository(onboardFile, onboardDisplayName.trim() || undefined);
+      } else {
+        res = await cloneAndIngest({
+          url_or_path: onboardUrlOrPath.trim(),
+          source_type: onboardType === "github" ? "github" : "local",
+          display_name: onboardDisplayName.trim() || undefined,
+        });
+      }
 
       setIngestionInfo(res);
       await loadRepositories();
 
       if (res.repository_id) {
         setSelectedRepoId(res.repository_id);
+        if (onSelectRepoId) {
+          onSelectRepoId(res.repository_id);
+        }
       }
 
       setShowOnboardModal(false);
       setOnboardUrlOrPath("");
+      setOnboardFile(null);
       setOnboardDisplayName("");
     } catch (err) {
       setOnboardError(err instanceof Error ? err.message : "Repository onboarding failed");
@@ -876,7 +898,7 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
                     type="button"
-                    onClick={() => setOnboardType("github")}
+                    onClick={() => { setOnboardType("github"); setOnboardError(null); }}
                     style={{
                       flex: 1,
                       padding: "0.5rem",
@@ -893,7 +915,24 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOnboardType("local")}
+                    onClick={() => { setOnboardType("zip"); setOnboardError(null); }}
+                    style={{
+                      flex: 1,
+                      padding: "0.5rem",
+                      borderRadius: "6px",
+                      border: `1px solid ${onboardType === "zip" ? "var(--accent-blue)" : "var(--border-subtle)"}`,
+                      backgroundColor: onboardType === "zip" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
+                      color: onboardType === "zip" ? "var(--accent-blue)" : "var(--text-secondary)",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Upload Local Git Repo (.zip)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setOnboardType("local"); setOnboardError(null); }}
                     style={{
                       flex: 1,
                       padding: "0.5rem",
@@ -902,44 +941,81 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                       backgroundColor: onboardType === "local" ? "var(--accent-blue-subtle)" : "var(--bg-card)",
                       color: onboardType === "local" ? "var(--accent-blue)" : "var(--text-secondary)",
                       fontWeight: 600,
-                      fontSize: "0.8rem",
+                      fontSize: "0.78rem",
                       cursor: "pointer",
                     }}
                   >
-                    Local Filesystem Path
+                    Local Path (Dev)
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.4rem" }}>
-                  {onboardType === "github" ? "GitHub HTTPS URL" : "Local Absolute Path"}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={onboardUrlOrPath}
-                  onChange={(e) => setOnboardUrlOrPath(e.target.value)}
-                  placeholder={
-                    onboardType === "github"
-                      ? "https://github.com/owner/repository"
-                      : "c:\\path\\to\\git\\repository"
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.55rem 0.75rem",
-                    borderRadius: "6px",
-                    border: "1px solid var(--border-subtle)",
-                    fontSize: "0.82rem",
-                    color: "var(--text-primary)",
-                  }}
-                />
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.2rem", display: "block" }}>
-                  {onboardType === "github"
-                    ? "Safe, bounded HTTPS clone into ~/.cache/nexusact. No arbitrary shell execution."
-                    : "Inspects local Git repository tree, AST dependencies, and commit log."}
-                </span>
-              </div>
+              {onboardType === "zip" ? (
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.4rem" }}>
+                    Repository Archive (.zip)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    required
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setOnboardFile(f);
+                      if (f && !onboardDisplayName) {
+                        setOnboardDisplayName(f.name.replace(/\.zip$/i, ""));
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border-subtle)",
+                      fontSize: "0.82rem",
+                      color: "var(--text-primary)",
+                      backgroundColor: "var(--bg-card)",
+                    }}
+                  />
+                  {onboardFile && (
+                    <span style={{ fontSize: "0.75rem", color: "var(--accent-blue)", marginTop: "0.25rem", display: "block", fontWeight: 600 }}>
+                      Selected: {onboardFile.name} ({(onboardFile.size / (1024 * 1024)).toFixed(2)} MB)
+                    </span>
+                  )}
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.2rem", display: "block" }}>
+                    Upload a local Git repository archive (.zip). Max 50 MB compressed, 200 MB extracted. Ingests source AST, dependencies, and history into an isolated FalkorDB graph.
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.4rem" }}>
+                    {onboardType === "github" ? "GitHub HTTPS URL" : "Local Absolute Path (Server Dev Only)"}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={onboardUrlOrPath}
+                    onChange={(e) => setOnboardUrlOrPath(e.target.value)}
+                    placeholder={
+                      onboardType === "github"
+                        ? "https://github.com/owner/repository"
+                        : "c:\\path\\to\\git\\repository"
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border-subtle)",
+                      fontSize: "0.82rem",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.2rem", display: "block" }}>
+                    {onboardType === "github"
+                      ? "Safe, bounded HTTPS clone into ~/.cache/nexusact. No arbitrary shell execution."
+                      : "Direct filesystem path on the machine hosting the backend server process."}
+                  </span>
+                </div>
+              )}
 
               <div>
                 <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.4rem" }}>
@@ -985,23 +1061,25 @@ export const InvestigationWorkspace: React.FC<InvestigationWorkspaceProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isOnboarding}
+                  disabled={isOnboarding || (onboardType === "zip" ? !onboardFile : !onboardUrlOrPath.trim())}
                   style={{
                     padding: "0.5rem 1.25rem",
                     borderRadius: "6px",
                     border: "none",
-                    backgroundColor: "var(--accent-blue)",
+                    backgroundColor: isOnboarding ? "var(--text-muted)" : "var(--accent-blue)",
                     color: "#ffffff",
                     fontWeight: 600,
                     fontSize: "0.82rem",
-                    cursor: "pointer",
+                    cursor: isOnboarding ? "not-allowed" : "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: "0.4rem",
                   }}
                 >
                   <RotateCw size={13} style={{ animation: isOnboarding ? "spin 1.5s linear infinite" : undefined }} />
-                  {isOnboarding ? "Cloning & Ingesting..." : "Ingest Repository"}
+                  {isOnboarding
+                    ? (onboardType === "zip" ? "Extracting & Ingesting..." : "Cloning & Ingesting...")
+                    : (onboardType === "zip" ? "Upload & Ingest Archive" : "Ingest Repository")}
                 </button>
               </div>
             </form>

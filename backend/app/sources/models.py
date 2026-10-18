@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 class SourceType(str, Enum):
     LOCAL = "local"
     GITHUB = "github"
+    ARCHIVE = "archive"
 
 
 class CollectionStatus(str, Enum):

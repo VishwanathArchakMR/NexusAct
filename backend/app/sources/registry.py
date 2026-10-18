@@ -199,6 +199,50 @@ class RepositoryRegistry:
         self._save()
         return record
 
+    def register_archive_repository(
+        self,
+        extracted_path: str,
+        archive_name: str,
+        display_name: Optional[str] = None,
+        custom_graph_name: Optional[str] = None,
+    ) -> RepositoryRecord:
+        """Registers an uploaded repository ZIP archive extraction."""
+        p = Path(extracted_path).resolve()
+        name = display_name or archive_name
+        slug = re.sub(r"[^A-Za-z0-9_]", "_", archive_name.lower()).strip("_")
+        if not slug:
+            slug = "archive"
+        repo_id = f"repo:archive_{slug}"
+        graph_name = custom_graph_name or sanitize_graph_name(f"archive_{slug}")
+
+        has_git = (p / ".git").is_dir()
+        known_gaps = (
+            [] if has_git else ["Commit and reviewer history unavailable (uploaded archive lacks .git metadata)"]
+        )
+
+        record = RepositoryRecord(
+            id=repo_id,
+            name=name,
+            source_type=SourceType.ARCHIVE,
+            url_or_path=str(p),
+            graph_name=graph_name,
+            status="REGISTERED",
+            capabilities=[
+                SourceCapability(
+                    source_id="src:archive_zip",
+                    source_type=SourceType.ARCHIVE,
+                    repository_identifier=repo_id,
+                    data_categories=["code_ast"] + (["git_history"] if has_git else []),
+                    status=CollectionStatus.COLLECTED if has_git else CollectionStatus.PARTIAL,
+                    known_gaps=known_gaps,
+                )
+            ],
+            known_gaps=known_gaps,
+        )
+        self._repositories[repo_id] = record
+        self._save()
+        return record
+
     def update_repository(self, record: RepositoryRecord) -> None:
         """Updates and persists repository metadata."""
         self._repositories[record.id] = record

@@ -249,3 +249,79 @@ def test_public_demo_mode_graph_isolation():
     record2 = repo_registry.register_github_repository("https://github.com/pallets/flask")
     assert record2.graph_name != record.graph_name
     assert record2.graph_name != settings.FALKORDB_PRIMARY_GRAPH
+
+
+def test_public_demo_mode_allows_valid_zip_upload(client):
+    """Uploaded valid repository ZIP is extracted and ingested into an isolated graph."""
+    import io
+    import zipfile
+
+    # Build an in-memory zip archive with a valid python module
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("myrepo/core.py", "import os\ndef hello(): return 'world'\n")
+        zf.writestr("myrepo/utils.py", "from myrepo.core import hello\n")
+    zip_bytes = buf.getvalue()
+
+    with patch.object(settings, "PUBLIC_DEMO_MODE", True):
+        res = client.post(
+            "/api/v1/ingest/upload-zip",
+            files={"file": ("myrepo.zip", zip_bytes, "application/zip")},
+            data={"display_name": "Test Uploaded Repo"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["repository_id"].startswith("repo:archive_")
+        assert data["graph_name"].startswith("repo_archive_")
+        assert data["graph_name"] != settings.FALKORDB_PRIMARY_GRAPH
+        assert data["module_count"] >= 1
+        assert "disabled in public demo mode" not in str(data)
+
+
+def test_public_demo_mode_rejects_empty_zip(client):
+    """Uploading an empty ZIP archive triggers HTTP 400."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as _:
+        pass
+    empty_zip = buf.getvalue()
+
+    with patch.object(settings, "PUBLIC_DEMO_MODE", True):
+        res = client.post(
+            "/api/v1/ingest/upload-zip",
+            files={"file": ("empty.zip", empty_zip, "application/zip")},
+        )
+        assert res.status_code == 400
+        assert "empty" in res.json()["detail"].lower()
+
+
+def test_public_demo_mode_rejects_non_zip_file(client):
+    """Uploading non-.zip files triggers HTTP 400."""
+    with patch.object(settings, "PUBLIC_DEMO_MODE", True):
+        res = client.post(
+            "/api/v1/ingest/upload-zip",
+            files={"file": ("malicious.sh", b"#!/bin/bash\nrm -rf /", "application/x-sh")},
+        )
+        assert res.status_code == 400
+        assert "Only .zip archive format is supported" in res.json()["detail"]
+
+
+def test_public_demo_mode_rejects_zip_slip_path_traversal(client):
+    """ZIP archives containing directory traversal entries are rejected with HTTP 400."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("../../../etc/cron.d/evil", "evil payload")
+    evil_zip = buf.getvalue()
+
+    with patch.object(settings, "PUBLIC_DEMO_MODE", True):
+        res = client.post(
+            "/api/v1/ingest/upload-zip",
+            files={"file": ("traversal.zip", evil_zip, "application/zip")},
+        )
+        assert res.status_code == 400
+        assert "traversal" in res.json()["detail"].lower() or "invalid entry path" in res.json()["detail"].lower()

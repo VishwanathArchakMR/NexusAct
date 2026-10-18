@@ -231,7 +231,7 @@ export interface FraudInvestigationOutput {
 export interface SourceSnapshot {
   snapshot_id: string;
   repository_id: string;
-  source_type: "local" | "github";
+  source_type: "local" | "github" | "archive";
   canonical_source: string;
   default_branch?: string | null;
   commit_sha: string;
@@ -382,7 +382,7 @@ export interface RepositoryRecord {
   name: string;
   owner?: string | null;
   repo?: string | null;
-  source_type: "local" | "github";
+  source_type: "local" | "github" | "archive";
   url_or_path: string;
   graph_name: string;
   default_branch: string;
