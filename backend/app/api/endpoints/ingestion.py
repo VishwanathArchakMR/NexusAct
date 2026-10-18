@@ -49,7 +49,8 @@ def _public_demo_ingest_guard(request: Request) -> Generator[None, None, None]:
 
     # Caddy appends the client address to X-Forwarded-For; the backend is private behind this gateway.
     forwarded_for = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded_for.split(",")[-1].strip() if forwarded_for else ""
+    # Proxy chains are ordered client-first; use the original client entry, never a gateway hop.
+    client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else ""
     if not client_ip:
         client_ip = request.client.host if request.client else "unknown"
 
