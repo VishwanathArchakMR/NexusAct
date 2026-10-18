@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
+from backend.app.core.config import settings
 from backend.app.finance.cypher_engine import query_financial_subgraph
 from backend.app.finance.dataset_registry import dataset_registry
 from backend.app.finance.ingestion_engine import (
@@ -51,6 +52,11 @@ async def preview_financial_file(
     payload: Optional[PreviewRequest] = None,
 ) -> DatasetPreviewResponse:
     """Profiles uploaded transaction file and returns detected columns, sample rows, and suggested mappings."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="File upload profiling is disabled in public demo mode. Preloaded financial datasets are available.",
+        )
     if file:
         content = (await file.read()).decode("utf-8", errors="replace")
         fname = file.filename or "uploaded.csv"
@@ -75,6 +81,14 @@ async def ingest_financial_file(
     payload: Optional[IngestTextRequest] = None,
 ) -> FinancialDatasetMetadata:
     """Validates and ingests financial transaction records into an isolated FalkorDB graph."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Financial file ingestion is disabled in public demo mode. "
+                "The bundled AML benchmark dataset is available."
+            ),
+        )
     if file:
         content = (await file.read()).decode("utf-8", errors="replace")
         fname = file.filename or "uploaded.csv"
@@ -155,6 +169,11 @@ async def activate_financial_dataset(dataset_id: str) -> Dict[str, Any]:
 @router.delete("/datasets/{dataset_id}")
 async def delete_financial_dataset(dataset_id: str) -> Dict[str, Any]:
     """Deletes a financial dataset and drops its isolated FalkorDB graph."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="Dataset deletion is disabled in public demo mode.",
+        )
     success = dataset_registry.delete_dataset(dataset_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")

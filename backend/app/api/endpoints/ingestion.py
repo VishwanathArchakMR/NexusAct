@@ -61,6 +61,13 @@ class ModuleSuggestion(BaseModel):
 @router.post("", response_model=IngestionReport)
 def trigger_ingestion(payload: IngestRequest) -> IngestionReport:
     """Ingests a local Git repository into FalkorDB via AST and commit extraction."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Repository ingestion is disabled in public demo mode. Preloaded graphs are available for exploration."
+            ),
+        )
     repo_path = payload.repository_path or settings.NEXUSACT_REPOSITORY_PATH
     path_obj = Path(repo_path).resolve()
 
@@ -86,6 +93,11 @@ def trigger_ingestion(payload: IngestRequest) -> IngestionReport:
 @router.post("/register", response_model=RepositoryRecord)
 def register_repository(payload: RegisterRepositoryRequest) -> RepositoryRecord:
     """Registers a new repository source (local path or public GitHub HTTPS URL) without ingesting immediately."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="Repository registration is disabled in public demo mode.",
+        )
     try:
         if payload.source_type == SourceType.GITHUB:
             return repo_registry.register_github_repository(
@@ -109,6 +121,14 @@ def register_repository(payload: RegisterRepositoryRequest) -> RepositoryRecord:
 @router.post("/clone-and-ingest", response_model=IngestionReport)
 def clone_and_ingest(payload: OnboardRepoRequest) -> IngestionReport:
     """Safely clones a public GitHub repo (or reads local path) and ingests it into an isolated graph."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Repository onboarding and cloning are disabled in public demo mode. "
+                "Preloaded graphs are available for exploration."
+            ),
+        )
     # 1. Resolve or register repository record
     record: Optional[RepositoryRecord] = None
     if payload.repo_id:

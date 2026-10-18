@@ -225,7 +225,21 @@ To prevent generic labels, unidentified graphs, or uncalibrated fraud claims:
 | Boundary | Mechanism | Enforcement |
 |---|---|---|
 | **Graph Mutation** | Read-Only Cypher Planner & Regex Barrier | Rejects `CREATE`, `MERGE`, `DELETE`, `SET`, `DROP` with 400 Bad Request |
+| **Public Demo Guard** | Server-Side `PUBLIC_DEMO_MODE` Flag | Returns 403 Forbidden for repo cloning, file uploads, and external GitHub actions |
 | **Cross-Graph Leakage** | Authoritative Source Registry | Backend resolves graph names from trusted IDs; client cannot inject graph names |
 | **Action Execution** | SHA-256 Cryptographic Hash Lock | External actions require manual approval and match payload hash exactly |
 | **LLM Disconnection** | Deterministic Graph Fallback | Degrades gracefully to Cypher template grounding; never returns fabricated answers |
 | **Cross-Language Code Inspection** | FalkorDB `m.path` resolution & extension probe | Probes `.tsx`, `.ts`, `.py`, `.json` against repo root; prevents false 404s |
+| **Network Exposure** | Internal Bridge Network & Caddy Ingress | Only Caddy publishes 80/443; FalkorDB (6379) and FastAPI (8000) remain strictly private |
+
+---
+
+## 9. Production Deployment Topology (Always Free Fit)
+
+In production deployments, NexusAct runs as a single-VM Docker Compose stack fronted by Caddy:
+- **Caddy Ingress Container:** Listens on public HTTP (80) and HTTPS (443), managing automatic TLS certificates via Let's Encrypt.
+- **Frontend Container:** Serves the compiled React 19 SPA through Nginx on internal port 80.
+- **Backend Container:** Hosts the FastAPI application and MCP server on internal port 8000. Proxied by Caddy under `/api/*`, `/health`, and `/ready`.
+- **FalkorDB Container:** Graph database running on internal port 6379 with persistent named volume `nexusact_falkordb_data` mounted at `/data` and append-only file (AOF) persistence.
+- **Zero Paid Cloud Dependencies:** Designed to operate entirely within the Oracle Cloud Infrastructure Always Free tier (Ampere A1 Arm64 or AMD64 Micro).
+

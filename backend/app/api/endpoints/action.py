@@ -11,6 +11,7 @@ from backend.app.action.github import (
     IssueProposal,
     github_action_service,
 )
+from backend.app.core.config import settings
 
 logger = logging.getLogger("nexusact.api.action")
 router = APIRouter(prefix="/action", tags=["Action Execution"])
@@ -67,6 +68,14 @@ def save_internal_action(payload: SaveInternalActionRequest) -> IssueProposal:
 @router.post("/execute", response_model=ActionExecutionResult)
 async def execute_action(payload: ExecuteActionRequest) -> ActionExecutionResult:
     """Executes an approved action strictly validating the approved payload hash."""
+    if settings.PUBLIC_DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "External action execution is disabled in public demo mode. "
+                "Internal review and proposal inspection remain available."
+            ),
+        )
     try:
         result = await github_action_service.execute_approved_action(
             action_id=payload.action_id,

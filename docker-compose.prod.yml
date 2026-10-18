@@ -1,42 +1,119 @@
 # ==============================================================================
-# NexusAct (GAF) — Production Docker Compose
+# NexusAct (GAF) — Production Docker Compose (Single-VM Always Free Topology)
 #
-# Brings up three services:
-#   falkordb   — FalkorDB v4.4.1 graph database (data persists in named volume)
-#   backend    — FastAPI + MCP server  (port 8000)
-#   frontend   — nginx serving the React SPA  (port 3000 → 80 inside container)
+# Services:
+#   caddy      — Public reverse proxy with automatic HTTPS (ports 80 & 443)
+#   frontend   — React SPA served via Nginx (internal network port 80)
+#   backend    — FastAPI application (internal network port 8000)
+#   falkordb   — FalkorDB v4.4.1 graph database with persistent volume (/data)
+#
+# Security:
+#   - Only Caddy exposes public ports (80, 443).
+#   - FalkorDB (6379) and FastAPI (8000) are NOT published to the host/internet.
+#   - All inter-service traffic routes over the private bridge network.
+#   - In public demo deployments, set PUBLIC_DEMO_MODE=true in .env.prod.
 #
 # Usage:
-#   # First-time or after code changes — build and start:
-#   docker compose -f docker-compose.prod.yml up --build -d
+#   # Pre-flight config check:
+#   docker compose -f docker-compose.prod.yml config
 #
-#   # View live logs:
+#   # Build and launch:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up --build -d
+#
+#   # View logs:
 #   docker compose -f docker-compose.prod.yml logs -f
 #
-#   # Stop and remove containers (data volume preserved):
+#   # Stop services (preserves data and TLS certificates):
 #   docker compose -f docker-compose.prod.yml down
-#
-#   # DESTROY data volume (irreversible):
-#   docker compose -f docker-compose.prod.yml down -v
-#
-# Environment overrides:
-#   Copy .env.example -> .env.prod and set real values before running.
-#   Pass with: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 # ==============================================================================
 
 services:
+
+  # ── Caddy Reverse Proxy & Automatic HTTPS Ingress ─────────────────────────────
+  caddy:
+    image: caddy:2.9-alpine
+    container_name: nexusact_caddy_prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - nexusact_caddy_data:/data
+      - nexusact_caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - nexusact_internal
+
+  # ── React Frontend (Nginx SPA) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Default empty string enables same-origin relative URLs (/api/v1/...)
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    container_name: nexusact_frontend_prod
+    restart: unless-stopped
+    # Internal only — no host port published. Caddy proxies traffic.
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - nexusact_internal
+
+  # ── FastAPI Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nexusact_backend_prod
+    restart: unless-stopped
+    # Internal only — no host port published. Caddy proxies /api and /health routes.
+    environment:
+      - APP_ENV=production
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PRIMARY_GRAPH=${FALKORDB_PRIMARY_GRAPH:-nexusact_main}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,https://localhost}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PUBLIC_DEMO_MODE=${PUBLIC_DEMO_MODE:-true}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - nexusact_internal
+    volumes:
+      - nexusact_repo_cache:/home/nexusact/.cache/nexusact
 
   # ── FalkorDB Graph Database ──────────────────────────────────────────────────
   falkordb:
     image: falkordb/falkordb:v4.4.1
     container_name: nexusact_falkordb_prod
-    # Bind strictly to loopback; backend accesses it over the internal network.
-    # Remove the host port binding in production if you don't need external access.
-    ports:
-      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    # Internal only — port 6379 is NOT published to the host/internet.
     volumes:
       - nexusact_falkordb_data:/data
-    restart: unless-stopped
     environment:
       - BROWSER=0
       # AOF persistence — every write is synced to disk.
@@ -50,65 +127,17 @@ services:
     networks:
       - nexusact_internal
 
-  # ── FastAPI Backend ───────────────────────────────────────────────────────────
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: nexusact_backend_prod
-    ports:
-      - "8000:8000"
-    environment:
-      - APP_ENV=production
-      - FALKORDB_HOST=falkordb
-      - FALKORDB_PORT=6379
-      - FALKORDB_PRIMARY_GRAPH=nexusact_main
-      # Override CORS_ORIGINS with your actual frontend URL in production.
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-    depends_on:
-      falkordb:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    networks:
-      - nexusact_internal
-    # Repo clone cache persists across container restarts
-    volumes:
-      - nexusact_repo_cache:/home/nexusact/.cache/nexusact
-
-  # ── React Frontend (nginx) ───────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        # Backend URL reachable from the end-user's browser (not internal Docker network)
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
-    container_name: nexusact_frontend_prod
-    ports:
-      - "3000:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - nexusact_internal
-
 volumes:
   nexusact_falkordb_data:
     name: nexusact_falkordb_data
   nexusact_repo_cache:
     name: nexusact_repo_cache
+  nexusact_caddy_data:
+    name: nexusact_caddy_data
+  nexusact_caddy_config:
+    name: nexusact_caddy_config
 
 networks:
   nexusact_internal:
+    name: nexusact_internal
     driver: bridge

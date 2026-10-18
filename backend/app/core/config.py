@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     APP_VERSION: str = "0.2.0"
     NEXUSACT_REPOSITORY_PATH: str = "."
+    PUBLIC_DEMO_MODE: bool = False
 
     # API Server
     BACKEND_HOST: str = "127.0.0.1"
