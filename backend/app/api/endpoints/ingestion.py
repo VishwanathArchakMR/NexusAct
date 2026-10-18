@@ -160,7 +160,10 @@ def _validate_public_demo_ingestion_request(payload: "OnboardRepoRequest") -> Pu
             )
         raw_url = payload.url_or_path
     else:
-        raise HTTPException(status_code=400, detail="Must provide a public GitHub URL or an existing GitHub repository ID.")
+        raise HTTPException(
+            status_code=400,
+            detail="Must provide a public GitHub URL or an existing GitHub repository ID.",
+        )
 
     try:
         validated_url = PublicGitHubUrl.parse_and_validate(raw_url)
