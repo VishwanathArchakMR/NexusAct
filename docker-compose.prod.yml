@@ -27,6 +27,8 @@
 #   docker compose -f docker-compose.prod.yml down
 # ==============================================================================
 
+name: nexusact-prod
+
 services:
 
   # ── Caddy Reverse Proxy & Automatic HTTPS Ingress ─────────────────────────────
@@ -89,7 +91,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     depends_on:
       falkordb:
@@ -104,7 +106,7 @@ services:
     networks:
       - nexusact_internal
     volumes:
-      - nexusact_repo_cache:/home/nexusact/.cache/nexusact
+      - nexusact_repo_cache_prod:/home/nexusact/.cache/nexusact
 
   # ── FalkorDB Graph Database ──────────────────────────────────────────────────
   falkordb:
@@ -113,7 +115,7 @@ services:
     restart: unless-stopped
     # Internal only — port 6379 is NOT published to the host/internet.
     volumes:
-      - nexusact_falkordb_data:/data
+      - nexusact_falkordb_data_prod:/data
     environment:
       - BROWSER=0
       # AOF persistence — every write is synced to disk.
@@ -128,10 +130,10 @@ services:
       - nexusact_internal
 
 volumes:
-  nexusact_falkordb_data:
-    name: nexusact_falkordb_data
-  nexusact_repo_cache:
-    name: nexusact_repo_cache
+  nexusact_falkordb_data_prod:
+    name: nexusact_falkordb_data_prod
+  nexusact_repo_cache_prod:
+    name: nexusact_repo_cache_prod
   nexusact_caddy_data:
     name: nexusact_caddy_data
   nexusact_caddy_config:
@@ -139,5 +141,5 @@ volumes:
 
 networks:
   nexusact_internal:
-    name: nexusact_internal
+    name: nexusact_internal_prod
     driver: bridge
