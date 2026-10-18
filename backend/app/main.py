@@ -29,7 +29,17 @@ def _extract_hosts_from_origins(origins: List[str]) -> List[str]:
             if parsed.port:
                 hosts.add(f"{parsed.hostname}:{parsed.port}")
     # Local/test/internal hosts plus Railway's fixed health-check host. No wildcard hosts.
-    hosts.update(["localhost", "127.0.0.1", "backend", "testserver", "localhost:8000", "127.0.0.1:8000", "healthcheck.railway.app"])
+    hosts.update(
+        [
+            "localhost",
+            "127.0.0.1",
+            "backend",
+            "testserver",
+            "localhost:8000",
+            "127.0.0.1:8000",
+            "healthcheck.railway.app",
+        ]
+    )
     return list(hosts)
 
 
